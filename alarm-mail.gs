@@ -18,6 +18,11 @@ function zainstaluj() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('sprawdzLeki').timeBased().everyDays(1).atHour(KONFIG.godzina).inTimezone(KONFIG.strefa).create();
   sprawdzLeki();
+  MailApp.sendEmail({
+    to: Session.getEffectiveUser().getEmail(),
+    subject: 'Zdrowie Taty: powiadomienia o lekach włączone',
+    body: 'Skrypt działa. Leki będą sprawdzane codziennie około godziny ' + KONFIG.godzina + ':00.\n\n' + KONFIG.strona
+  });
 }
 
 function sprawdzLeki() {
