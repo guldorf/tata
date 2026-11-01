@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zdrowie Taty</title>
+<meta name="theme-color" content="#67B437">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="ikona-192.png">
+<link rel="apple-touch-icon" href="ikona-180.png">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+:root{
+  color-scheme:light;
+  --tlo:#f3f5f4; --karta:#fff; --tekst:#111; --tekst2:#4a4f4c; --linia:#dcdfdc; --os:#c3c2b7;
+  --akcent:#67B437; --na-akcencie:#2B2A29; --alarm:#d03b3b;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--tlo);color:var(--tekst);font:19px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+[hidden]{display:none!important}
+h1{font-size:26px;margin:0}
+h2{font-size:20px;margin:0 0 10px}
+.ekran{max-width:560px;margin:0 auto;padding:12px 16px 32px}
+.gora{display:flex;align-items:center;gap:10px;min-height:56px;margin-bottom:10px}
+.wstecz{display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:14px;background:var(--karta);
+  border:1px solid var(--linia);color:var(--tekst);text-decoration:none;flex:none}
+.wstecz svg{width:26px;height:26px}
+svg.i{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.karta{background:var(--karta);border:1px solid var(--linia);border-radius:16px;padding:14px;margin-bottom:14px}
+label{display:block;font-size:16px;font-weight:600;color:var(--tekst2);margin-bottom:4px}
+input{width:100%;min-width:0;height:56px;border:2px solid var(--os);border-radius:12px;padding:0 12px;background:#fff;color:var(--tekst);font:inherit;font-size:22px}
+input[type=datetime-local]{font-size:17px;padding:0 6px}
+input:focus{outline:none;border-color:var(--akcent)}
+.j{font-weight:400}
+.pola{display:grid;gap:10px;margin-bottom:12px;align-items:end}
+.pola.n1{grid-template-columns:minmax(96px,1fr) minmax(0,2fr)}
+.pola.n3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.pola.n3 .pole-kiedy{grid-column:1/-1}
+button,.btn{display:block;width:100%;min-height:58px;border:0;border-radius:14px;background:var(--akcent);color:var(--na-akcencie);font:inherit;font-size:21px;font-weight:700;cursor:pointer}
+button.drugi{background:#e4e9e7;color:var(--tekst)}
+button.usun{background:#fff;color:var(--alarm);border:2px solid var(--alarm)}
+button:disabled{opacity:.6}
+.blad{color:var(--alarm);font-weight:600;min-height:1.3em;margin:0 0 6px;font-size:17px}
+.logo{display:flex;align-items:center;justify-content:center;width:84px;height:84px;margin:28px auto 12px;border-radius:24px;background:var(--akcent);color:var(--na-akcencie)}
+.logo svg{width:50px;height:50px}
+#ekranLogin h1{text-align:center;margin-bottom:22px}
+#ekranLogin .pole{margin-bottom:14px}
+
+/* start */
+#ekranStart{display:flex;flex-direction:column;min-height:100dvh}
+.kafle{flex:1;display:grid;grid-auto-rows:minmax(116px,1fr);gap:12px;margin:0 0 12px}
+.kafel{position:relative;display:flex;align-items:center;gap:16px;padding:14px;background:var(--karta);border:1px solid var(--linia);border-radius:20px;color:var(--tekst);text-decoration:none}
+.ik{display:flex;align-items:center;justify-content:center;width:84px;height:84px;border-radius:22px;flex:none;color:#fff}
+.ik svg{width:52px;height:52px}
+.kafel b{display:block;font-size:30px;line-height:1.15}
+.kafel small{display:block;font-size:16px;color:var(--tekst2);margin-top:2px}
+.znacznik{position:absolute;top:10px;right:10px;min-width:32px;height:32px;padding:0 8px;border-radius:16px;background:var(--alarm);color:#fff;font-weight:700;font-size:18px;display:flex;align-items:center;justify-content:center}
+.wyloguj{background:none;color:var(--tekst2);font-size:16px;font-weight:400;min-height:44px;text-decoration:underline}
+
+/* alarm */
+@keyframes puls{0%,100%{box-shadow:0 0 0 0 rgba(208,59,59,.75);background:var(--alarm)}50%{box-shadow:0 0 0 9px rgba(208,59,59,0);background:#a92424}}
+.alarm{display:flex;gap:12px;align-items:flex-start;width:100%;margin:0 0 14px;padding:14px;border-radius:16px;background:var(--alarm);color:#fff;text-align:left;text-decoration:none;font-size:18px;font-weight:400;animation:puls 1.4s ease-in-out infinite}
+.alarm svg{width:34px;height:34px;flex:none}
+.alarm b{display:block;font-size:22px}
+.znacznik,.zamow{animation:puls 1.4s ease-in-out infinite}
+
+/* przełączniki */
+.prz{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;padding:4px;background:#e4e9e7;border-radius:14px;margin-bottom:12px}
+.prz button{min-height:50px;background:transparent;color:var(--tekst);font-size:18px;font-weight:600;border-radius:11px;padding:0 2px}
+.prz button[aria-pressed=true]{background:var(--akcent);color:var(--na-akcencie)}
+.prz.male button{min-height:42px;font-size:16px}
+
+/* tabela */
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{font-size:15px;color:var(--tekst2);text-align:right;padding:6px 6px;border-bottom:2px solid var(--linia)}
+td{padding:12px 6px;border-bottom:1px solid var(--linia);text-align:right;font-size:20px;font-weight:600}
+th:first-child,td:first-child{text-align:left;padding-left:0}
+td:first-child{font-size:16px;font-weight:400;color:var(--tekst2)}
+tbody tr{cursor:pointer}
+.pusto{color:var(--tekst2);text-align:center;margin:20px 0}
+.wskazowka{font-size:15px;color:var(--tekst2);margin:10px 0 0}
+
+/* wykres */
+.wykres{position:relative}
+.wykres svg{display:block;width:100%;touch-action:pan-y;user-select:none}
+.legenda{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:16px;color:var(--tekst2);margin-bottom:6px}
+.legenda span{display:inline-flex;align-items:center;gap:6px}
+.legenda i{display:inline-block;width:20px;height:3px;border-radius:2px}
+.dymek{position:absolute;top:0;pointer-events:none;background:#111;color:#fff;border-radius:10px;padding:6px 10px;font-size:15px;white-space:nowrap}
+.dymek div{display:flex;align-items:center;gap:6px}
+.dymek i{display:inline-block;width:14px;height:3px;border-radius:2px}
+.dymek b{font-size:18px}
+.dymek small{display:block;color:#d5d5d5;font-size:14px}
+
+/* leki */
+.lek{display:block;width:100%;background:var(--karta);border:1px solid var(--linia);border-radius:16px;padding:14px;margin-bottom:10px;color:var(--tekst);text-align:left;font-size:17px;font-weight:400;cursor:pointer}
+.lek b{display:block;font-size:22px;overflow-wrap:anywhere}
+.lek .ile{font-size:19px}
+.lek .nisko{color:var(--alarm);font-weight:700}
+.zamow{display:inline-block;margin-top:6px;padding:3px 12px;border-radius:999px;background:var(--alarm);color:#fff;font-weight:700;font-size:16px}
+.ustawienie{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:12px;align-items:center}
+.ustawienie label{margin:0;font-size:17px}
+.mailinfo{font-size:15px;color:var(--tekst2);margin:10px 0 0}
+
+/* okno */
+dialog{border:0;border-radius:20px;padding:18px;width:min(520px,calc(100vw - 32px));color:var(--tekst)}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+dialog h2{font-size:22px}
+dialog .przyciski{display:grid;gap:10px}
+dialog .pole{margin-bottom:12px}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#111;color:#fff;border-radius:999px;padding:12px 24px;font-weight:600;z-index:10}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="icKrople" viewBox="0 0 24 24"><path d="M12 2.5s7 7.3 7 12.2a7 7 0 0 1-14 0C5 9.8 12 2.5 12 2.5z"/></symbol>
+  <symbol id="icSerce" viewBox="0 0 24 24"><path d="M12 20.5s-8-5-8-11a4.6 4.6 0 0 1 8-3 4.6 4.6 0 0 1 8 3c0 6-8 11-8 11z"/><path d="M6.5 12h3l1.5-3 2 5 1.5-2h3"/></symbol>
+  <symbol id="icLek" viewBox="0 0 24 24"><g transform="rotate(-45 12 12)"><rect x="2.5" y="8" width="19" height="8" rx="4"/><path d="M12 8v8"/></g></symbol>
+  <symbol id="icUwaga" viewBox="0 0 24 24"><path d="M12 3 2 20h20z"/><path d="M12 10v5"/><path d="M12 17.6v.01"/></symbol>
+  <symbol id="icWstecz" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+</svg>
+
+<section class="ekran" id="ekranLogin" hidden>
+  <div class="logo"><svg class="i"><use href="#icSerce"/></svg></div>
+  <h1>Zdrowie Taty</h1>
+  <form id="fLogin" class="karta" autocomplete="on">
+    <div class="pole"><label for="lLogin">Login</label>
+      <input id="lLogin" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required></div>
+    <div class="pole"><label for="lHaslo">Hasło</label>
+      <input id="lHaslo" name="password" type="password" autocomplete="current-password" required></div>
+    <p class="blad" id="lBlad" role="alert"></p>
+    <button id="lBtn">Zaloguj</button>
+  </form>
+</section>
+
+<section class="ekran" id="ekranStart" hidden>
+  <div class="gora"><h1>Zdrowie Taty</h1></div>
+  <a class="alarm" id="alarmStart" href="#leki/magazyn" hidden></a>
+  <nav class="kafle">
+    <a class="kafel" href="#cukier"><span class="ik" style="background:var(--s1)"><svg class="i"><use href="#icKrople"/></svg></span><span><b>Cukier</b><small id="ostCukier"></small></span></a>
+    <a class="kafel" href="#cisnienie"><span class="ik" style="background:#c9501f"><svg class="i"><use href="#icSerce"/></svg></span><span><b>Ciśnienie</b><small id="ostCisnienie"></small></span></a>
+    <a class="kafel" href="#leki"><span class="ik" style="background:var(--akcent);color:var(--na-akcencie)"><svg class="i"><use href="#icLek"/></svg></span><span><b>Leki</b><small id="ostLeki"></small></span><span class="znacznik" id="znLeki" hidden></span></a>
+  </nav>
+  <button class="wyloguj" id="btnWyloguj">Wyloguj</button>
+</section>
+
+<section class="ekran" id="ekranCukier" hidden></section>
+<section class="ekran" id="ekranCisnienie" hidden></section>
+
+<section class="ekran" id="ekranLeki" hidden>
+  <div class="gora"><a class="wstecz" href="#start" aria-label="Wróć"><svg class="i"><use href="#icWstecz"/></svg></a><h1>Leki</h1></div>
+  <a class="alarm" id="alarmLeki" href="#leki/magazyn" hidden></a>
+  <div class="prz" id="przLeki">
+    <button data-z="wykaz" aria-pressed="true">Wykaz leków</button>
+    <button data-z="magazyn" aria-pressed="false">Magazyn</button>
+  </div>
+  <div id="wykaz">
+    <div id="listaWykaz"></div>
+    <button id="btnDodajLek">+ Dodaj lek</button>
+  </div>
+  <div id="magazyn" hidden>
+    <div id="listaMagazyn"></div>
+    <div class="karta">
+      <div class="ustawienie">
+        <label for="prog">Alarmuj, gdy leku zostanie na tyle dni:</label>
+        <input id="prog" type="number" inputmode="numeric" min="1" max="120">
+      </div>
+      <p class="mailinfo" id="mailInfo"></p>
+    </div>
+  </div>
+</section>
+
+<dialog id="okno"><form method="dialog" id="oknoForm" novalidate></form></dialog>
+<div id="toast" role="status" hidden></div>
+
+<script>
+(function(){
+'use strict';
+// Konfiguracja projektu Firebase (apiKey nie jest tajny – dostęp chronią reguły w firestore.rules).
+const CFG = {
+  apiKey: "AIzaSyCHvavuReCdBmhsqyeCDfxO1W_CDYH70Nc",
+  authDomain: "zdrowie-taty-7412.firebaseapp.com",
+  projectId: "zdrowie-taty-7412",
+  storageBucket: "zdrowie-taty-7412.firebasestorage.app",
+  messagingSenderId: "598608145719",
+  appId: "1:598608145719:web:c25fd4046f1c82a272beb2"
+};
+const DOMENA = 'tata.app', LOGIN = 'guldorf', PROG_DOMYSLNY = 14;
+
+firebase.initializeApp(CFG);
+const auth = firebase.auth(), db = firebase.firestore();
+db.enablePersistence().catch(()=>{}); // odczyty i zapisy działają też przy słabym zasięgu
+const TS = d => firebase.firestore.Timestamp.fromDate(d);
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const z2 = n => String(n).padStart(2,'0');
+const num = s => { const n = parseFloat(String(s).replace(',','.')); return isFinite(n) ? n : null; };
+const liczba = n => String(Math.round(n*100)/100).replace('.',',');
+const dzienData = d => `${z2(d.getDate())}.${z2(d.getMonth()+1)}.${d.getFullYear()}`;
+const godzina = d => `${d.getHours()}:${z2(d.getMinutes())}`;
+const doInputa = d => `${d.getFullYear()}-${z2(d.getMonth()+1)}-${z2(d.getDate())}T${z2(d.getHours())}:${z2(d.getMinutes())}`;
+// różnica w dniach kalendarzowych – odporna na zmianę czasu
+const dniMiedzy = (a,b) => Math.round((Date.UTC(b.getFullYear(),b.getMonth(),b.getDate())-Date.UTC(a.getFullYear(),a.getMonth(),a.getDate()))/864e5);
+function kiedyTekst(d){
+  const r = dniMiedzy(d,new Date());
+  return (r===0?'dziś':r===1?'wczoraj':dzienData(d))+', '+godzina(d);
+}
+function toast(t){ const e=$('toast'); e.textContent=t; e.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>e.hidden=true,2200); }
+const nieUdalo = e => { console.error(e); alert('Nie udało się zapisać: '+(e.message||e)); };
+
+// ---------- pomiary: cukier i ciśnienie działają tak samo ----------
+const POMIARY = {
+  cukier:   { tytul:'Cukier', ekran:'ekranCukier', pola:[
+    {k:'wartosc', l:'Odczyt', j:'mg/dL', min:20, max:800, kolor:'var(--s1)'} ]},
+  cisnienie:{ tytul:'Ciśnienie', ekran:'ekranCisnienie', pola:[
+    {k:'gorne', l:'Górne', j:'mmHg', min:50, max:300, kolor:'var(--s1)'},
+    {k:'dolne', l:'Dolne', j:'mmHg', min:30, max:200, kolor:'var(--s2)'},
+    {k:'puls',  l:'Puls',  j:'/min', min:20, max:250, kolor:'var(--s3)'} ]}
+};
+const D = { cukier:[], cisnienie:[], leki:[], alarm:{} }; // wpisy pomiarów rosnąco po czasie
+const UI = { cukier:{widok:'tabela',zakres:30}, cisnienie:{widok:'tabela',zakres:30}, zakladka:'wykaz' };
+const ZAKRESY = [[7,'7 dni'],[30,'30 dni'],[90,'90 dni'],[0,'Wszystko']];
+
+const htmlPol = (p,wpis) => p.pola.map(f=>`<div class="pole"><label for="${p.ekran}${wpis?'E':''}_${f.k}">${f.l} <span class="j">${f.j}</span></label>
+  <input id="${p.ekran}${wpis?'E':''}_${f.k}" data-k="${f.k}" type="text" inputmode="numeric" autocomplete="off" required value="${wpis?wpis[f.k]:''}"></div>`).join('');
+const htmlKiedy = (id,d) => `<div class="pole pole-kiedy"><label for="${id}">Data i godzina</label><input id="${id}" class="kiedy" type="datetime-local" value="${doInputa(d)}" required></div>`;
+
+// czyta pola formularza; zwraca dane albo komunikat błędu
+function czytajPomiar(p,form){
+  const dane={};
+  for(const f of p.pola){
+    const v=num(form.querySelector(`[data-k="${f.k}"]`).value);
+    if(v===null) return {blad:`Wpisz: ${f.l.toLowerCase()}.`};
+    if(v<f.min||v>f.max) return {blad:`${f.l}: ${liczba(v)} to chyba pomyłka (dozwolone ${f.min}–${f.max}).`};
+    dane[f.k]=v;
+  }
+  const d=new Date(form.querySelector('.kiedy').value);
+  if(isNaN(d)) return {blad:'Podaj datę i godzinę.'};
+  dane.kiedy=TS(d);
+  return {dane};
+}
+
+function zbudujEkranPomiaru(id){
+  const p=POMIARY[id], s=$(p.ekran), kiedyId=p.ekran+'_kiedy';
+  s.innerHTML=`<div class="gora"><a class="wstecz" href="#start" aria-label="Wróć"><svg class="i"><use href="#icWstecz"/></svg></a><h1>${p.tytul}</h1></div>
+  <form class="karta" novalidate>
+    <div class="pola n${p.pola.length}">${htmlPol(p)}${htmlKiedy(kiedyId,new Date())}</div>
+    <p class="blad" role="alert"></p>
+    <button>Zapisz</button>
+  </form>
+  <div class="prz" data-rola="widok">
+    <button data-w="tabela" aria-pressed="true">Tabela</button>
+    <button data-w="wykres" aria-pressed="false">Wykres</button>
+  </div>
+  <div class="prz male" data-rola="zakres">${ZAKRESY.map(([n,t])=>`<button data-n="${n}" aria-pressed="false">${t}</button>`).join('')}</div>
+  <div class="karta" data-rola="wynik"></div>`;
+
+  const form=s.querySelector('form'), kiedy=$(kiedyId), blad=s.querySelector('.blad');
+  // data wpisuje się sama i idzie z zegarem, dopóki nikt jej nie poprawi
+  let reczna=false;
+  const naTeraz=()=>{ if(!reczna) kiedy.value=doInputa(new Date()); };
+  kiedy.addEventListener('change',()=>{ reczna=true; });
+  setInterval(naTeraz,20000);
+  document.addEventListener('visibilitychange',naTeraz);
+  p.naTeraz=()=>{ reczna=false; naTeraz(); };
+
+  form.addEventListener('submit',e=>{
+    e.preventDefault();
+    const w=czytajPomiar(p,form);
+    blad.textContent=w.blad||'';
+    if(w.blad) return;
+    db.collection(id).add(w.dane).catch(nieUdalo); // bez await: przy braku zasięgu zapis czeka w kolejce
+    form.querySelectorAll('[data-k]').forEach(i=>{ i.value=''; i.blur(); });
+    p.naTeraz();
+    toast('Zapisano');
+  });
+  s.querySelector('[data-rola=widok]').addEventListener('click',e=>{
+    const w=e.target.dataset.w; if(w){ UI[id].widok=w; rysujWynik(id); } });
+  s.querySelector('[data-rola=zakres]').addEventListener('click',e=>{
+    if(e.target.dataset.n!==undefined){ UI[id].zakres=+e.target.dataset.n; rysujWynik(id); } });
+  s.querySelector('[data-rola=wynik]').addEventListener('click',e=>{
+    const tr=e.target.closest('tr[data-id]'); if(tr) oknoPomiaru(id,tr.dataset.id); });
+}
+
+function rysujWynik(id){
+  const p=POMIARY[id], s=$(p.ekran), u=UI[id], box=s.querySelector('[data-rola=wynik]');
+  s.querySelectorAll('[data-rola=widok] button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.w===u.widok));
+  s.querySelectorAll('[data-rola=zakres] button').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.n===u.zakres));
+  const od=u.zakres?Date.now()-u.zakres*864e5:0;
+  const wpisy=D[id].filter(w=>w.kiedy.toMillis()>=od);
+  box.textContent='';
+  if(!wpisy.length){ box.innerHTML='<p class="pusto">Brak odczytów w tym okresie.</p>'; return; }
+  if(u.widok==='tabela') rysujTabele(box,p,wpisy); else rysujWykres(box,p,wpisy);
+}
+
+function rysujTabele(box,p,wpisy){
+  const wiersze=wpisy.slice().reverse().map(w=>{
+    const d=w.kiedy.toDate();
+    return `<tr data-id="${esc(w.id)}"><td>${dzienData(d)}<br>${godzina(d)}</td>${p.pola.map(f=>`<td>${liczba(w[f.k])}</td>`).join('')}</tr>`;
+  }).join('');
+  box.innerHTML=`<table><thead><tr><th>Kiedy</th>${p.pola.map(f=>`<th>${p.pola.length>1?f.l:f.j}</th>`).join('')}</tr></thead><tbody>${wiersze}</tbody></table>
+    <p class="wskazowka">Dotknij wiersza, żeby poprawić albo usunąć odczyt.</p>`;
+}
+
+function okragleKreski(min,max,ile){
+  const zakres=max-min||10, surowy=zakres/ile, pot=Math.pow(10,Math.floor(Math.log10(surowy)));
+  const krok=[1,2,2.5,5,10].map(m=>m*pot).find(k=>k>=surowy)||10*pot;
+  const a=Math.floor(min/krok)*krok, b=Math.ceil(max/krok)*krok, t=[];
+  for(let v=a;v<=b+krok/2;v+=krok) t.push(Math.round(v*100)/100);
+  return t;
+}
+
+function rysujWykres(box,p,wpisy){
+  const wiele=p.pola.length>1;
+  box.innerHTML=(wiele
+    ? `<div class="legenda">${p.pola.map(f=>`<span><i style="background:${f.kolor}"></i>${f.l}</span>`).join('')}</div>`
+    : `<div class="legenda">${p.pola[0].j}</div>`)+'<div class="wykres"></div>';
+  const wyk=box.querySelector('.wykres');
+  const W=wyk.clientWidth||320, H=270, m={l:36,r:wiele?36:12,t:10,b:26}, pw=W-m.l-m.r, ph=H-m.t-m.b;
+  const ts=wpisy.map(w=>w.kiedy.toMillis()), t0=ts[0], t1=ts[ts.length-1];
+  const X=t=>t1===t0?m.l+pw/2:m.l+(t-t0)/(t1-t0)*pw;
+  const wart=[]; p.pola.forEach(f=>wpisy.forEach(w=>wart.push(w[f.k])));
+  const kreski=okragleKreski(Math.min(...wart),Math.max(...wart),4), y0=kreski[0], y1=kreski[kreski.length-1];
+  const Y=v=>m.t+ph-(v-y0)/((y1-y0)||1)*ph;
+  let g='';
+  kreski.forEach(v=>{ const y=Y(v);
+    g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${y}" y2="${y}" stroke="${v===y0?'var(--os)':'var(--linia)'}"/>`;
+    g+=`<text x="${m.l-6}" y="${y+4}" text-anchor="end" font-size="13" fill="#6b6f6c" style="font-variant-numeric:tabular-nums">${liczba(v)}</text>`; });
+  const krotko=t1-t0<36*36e5, etykieta=t=>{ const d=new Date(t); return krotko?godzina(d):`${z2(d.getDate())}.${z2(d.getMonth()+1)}`; };
+  const ileX=t1===t0?1:Math.max(2,Math.min(4,Math.floor(pw/80)));
+  for(let i=0;i<ileX;i++){
+    const t=ileX===1?t0:t0+(t1-t0)*i/(ileX-1), kot=ileX===1?'middle':i===0?'start':i===ileX-1?'end':'middle';
+    g+=`<text x="${X(t)}" y="${H-6}" text-anchor="${kot}" font-size="13" fill="#6b6f6c">${etykieta(t)}</text>`;
+  }
+  const kropki=wpisy.length<=40;
+  p.pola.forEach(f=>{
+    if(wpisy.length>1) g+=`<polyline fill="none" stroke="${f.kolor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${wpisy.map(w=>`${X(w.kiedy.toMillis())},${Y(w[f.k])}`).join(' ')}"/>`;
+    if(kropki) wpisy.forEach(w=>{ g+=`<circle cx="${X(w.kiedy.toMillis())}" cy="${Y(w[f.k])}" r="4" fill="${f.kolor}" stroke="#fff" stroke-width="2"/>`; });
+  });
+  // ostatnia wartość przy końcu każdej linii (bez nachodzenia na siebie)
+  if(wiele){
+    const ost=wpisy[wpisy.length-1], et=p.pola.map(f=>({y:Y(ost[f.k]),v:ost[f.k]})).sort((a,b)=>a.y-b.y);
+    et.forEach((e,i)=>{ if(i&&e.y-et[i-1].y<16) e.y=et[i-1].y+16; });
+    et.forEach(e=>{ g+=`<text x="${W-m.r+6}" y="${e.y+4}" font-size="14" font-weight="600" fill="#111">${liczba(e.v)}</text>`; });
+  }
+  wyk.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="Wykres: ${p.tytul}">${g}
+    <g class="kursor" visibility="hidden"><line y1="${m.t}" y2="${m.t+ph}" stroke="#111" stroke-width="1"/>${p.pola.map(f=>`<circle r="6" fill="${f.kolor}" stroke="#fff" stroke-width="2"/>`).join('')}</g></svg><div class="dymek" hidden></div>`;
+  const svg=wyk.querySelector('svg'), kur=svg.querySelector('.kursor'), dym=wyk.querySelector('.dymek');
+  const kolka=kur.querySelectorAll('circle'), linia=kur.querySelector('line');
+  const pokaz=e=>{
+    const x=(e.clientX-svg.getBoundingClientRect().left);
+    let n=0, best=1e9; ts.forEach((t,i)=>{ const o=Math.abs(X(t)-x); if(o<best){ best=o; n=i; } });
+    const w=wpisy[n], px=X(ts[n]);
+    kur.setAttribute('visibility','visible');
+    linia.setAttribute('x1',px); linia.setAttribute('x2',px);
+    p.pola.forEach((f,i)=>{ kolka[i].setAttribute('cx',px); kolka[i].setAttribute('cy',Y(w[f.k])); });
+    dym.innerHTML=p.pola.map(f=>`<div><i style="background:${f.kolor}"></i><b>${liczba(w[f.k])}</b> ${wiele?f.l:f.j}</div>`).join('')
+      +`<small>${dzienData(w.kiedy.toDate())}, ${godzina(w.kiedy.toDate())}</small>`;
+    dym.hidden=false;
+    const sz=dym.offsetWidth; dym.style.left=Math.max(0,Math.min(W-sz,px<W/2?px+12:px-sz-12))+'px';
+  };
+  svg.addEventListener('pointerdown',pokaz);
+  svg.addEventListener('pointermove',pokaz);
+  svg.addEventListener('pointerleave',e=>{ if(e.pointerType==='mouse'){ kur.setAttribute('visibility','hidden'); dym.hidden=true; } });
+}
+
+// ---------- okno dialogowe ----------
+const okno=$('okno'), oknoForm=$('oknoForm');
+function otworzOkno(html,obsluga){
+  oknoForm.innerHTML=html;
+  oknoForm.onclick=e=>{ const b=e.target.closest('button[data-a]'); if(!b) return; e.preventDefault(); obsluga(b.dataset.a); };
+  oknoForm.onsubmit=e=>{ e.preventDefault(); obsluga('ok'); };
+  okno.showModal();
+}
+const zamknijOkno=()=>okno.close();
+
+function oknoPomiaru(id,wid){
+  const p=POMIARY[id], w=D[id].find(x=>x.id===wid); if(!w) return;
+  otworzOkno(`<h2>Popraw odczyt: ${p.tytul.toLowerCase()}</h2>${htmlPol(p,w)}${htmlKiedy('edKiedy',w.kiedy.toDate())}
+    <p class="blad" role="alert"></p>
+    <div class="przyciski"><button data-a="ok">Zapisz</button><button class="usun" data-a="usun">Usuń odczyt</button><button class="drugi" data-a="anuluj">Anuluj</button></div>`,a=>{
+    if(a==='anuluj') return zamknijOkno();
+    if(a==='usun'){
+      if(!confirm('Usunąć ten odczyt?')) return;
+      db.collection(id).doc(wid).delete().catch(nieUdalo); zamknijOkno(); toast('Usunięto'); return;
+    }
+    const r=czytajPomiar(p,oknoForm);
+    oknoForm.querySelector('.blad').textContent=r.blad||'';
+    if(r.blad) return;
+    db.collection(id).doc(wid).set(r.dane).catch(nieUdalo); zamknijOkno(); toast('Zapisano');
+  });
+}
+
+// ---------- leki ----------
+// Stan to liczba tabletek rano, przed dzisiejszą dawką: każdy kolejny dzień odejmuje dawkę dzienną.
+function stanLeku(l,dzis=new Date()){
+  if(l.stan===null||l.stan===undefined||!l.stanData) return {znany:false};
+  const teraz=Math.max(0,l.stan-(l.naDzien||0)*Math.max(0,dniMiedzy(l.stanData.toDate(),dzis)));
+  if(!(l.naDzien>0)) return {znany:true,teraz,dni:Infinity};
+  const dni=Math.floor(teraz/l.naDzien), koniec=new Date(dzis.getFullYear(),dzis.getMonth(),dzis.getDate()+dni-1);
+  return {znany:true,teraz,dni,koniec};
+}
+const prog=()=>D.alarm.prog>0?D.alarm.prog:PROG_DOMYSLNY;
+const doZamowienia=()=>D.leki.map(l=>({l,s:stanLeku(l)})).filter(x=>x.s.znany&&x.s.dni<=prog()).sort((a,b)=>a.s.dni-b.s.dni);
+const opisDni=s=>s.dni===0?'już brak':s.dni===1?'zostało na 1 dzień':`zostało na ${s.dni} dni`;
+
+function rysujAlarm(){
+  const lista=doZamowienia();
+  const html=lista.length?`<svg class="i"><use href="#icUwaga"/></svg><span><b>Zamów leki!</b>${lista.map(x=>`${esc(x.l.nazwa)} – ${opisDni(x.s)}`).join('<br>')}</span>`:'';
+  ['alarmStart','alarmLeki'].forEach(id=>{ $(id).innerHTML=html; $(id).hidden=!lista.length; });
+  $('znLeki').textContent=lista.length; $('znLeki').hidden=!lista.length;
+}
+
+function rysujStart(){
+  const ost=(id,fn)=>{ const a=D[id], w=a[a.length-1]; return w?fn(w)+' · '+kiedyTekst(w.kiedy.toDate()):'Brak odczytów'; };
+  $('ostCukier').textContent=ost('cukier',w=>`${liczba(w.wartosc)} mg/dL`);
+  $('ostCisnienie').textContent=ost('cisnienie',w=>`${liczba(w.gorne)}/${liczba(w.dolne)}, puls ${liczba(w.puls)}`);
+  const n=D.leki.length;
+  $('ostLeki').textContent=n?`Wykaz: ${n} ${n===1?'lek':n%10>=2&&n%10<=4&&(n<10||n>20)?'leki':'leków'}`:'Wykaz jest pusty';
+}
+
+function rysujLeki(){
+  document.querySelectorAll('#przLeki button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.z===UI.zakladka));
+  $('wykaz').hidden=UI.zakladka!=='wykaz'; $('magazyn').hidden=UI.zakladka!=='magazyn';
+  const abc=D.leki.slice().sort((a,b)=>a.nazwa.localeCompare(b.nazwa,'pl'));
+  $('listaWykaz').innerHTML=abc.length?abc.map(l=>`<button class="lek" data-id="${esc(l.id)}"><b>${esc(l.nazwa)}</b><span class="ile">${liczba(l.naDzien)} tabl. dziennie</span></button>`).join('')
+    :'<p class="pusto">Dodaj pierwszy lek.</p>';
+  const wg=abc.map(l=>({l,s:stanLeku(l)})).sort((a,b)=>(a.s.znany?a.s.dni:-1)-(b.s.znany?b.s.dni:-1));
+  $('listaMagazyn').innerHTML=wg.length?wg.map(({l,s})=>{
+    if(!s.znany) return `<button class="lek" data-id="${esc(l.id)}"><b>${esc(l.nazwa)}</b><span class="nisko">Wpisz, ile masz tabletek</span></button>`;
+    const alarm=s.dni<=prog();
+    const reszta=s.dni===Infinity?'Nie ubywa (0 dziennie)':s.dni===0?'Lek się skończył':`Starczy na ${s.dni===1?'1 dzień':s.dni+' dni'}, do ${dzienData(s.koniec)}`;
+    return `<button class="lek" data-id="${esc(l.id)}"><b>${esc(l.nazwa)}</b><span class="ile">Zostało ok. ${liczba(s.teraz)} tabl.</span><br><span class="${alarm?'nisko':''}">${reszta}</span>${alarm?'<br><span class="zamow">Zamów</span>':''}</button>`;
+  }).join(''):'<p class="pusto">Najpierw dodaj leki w wykazie.</p>';
+  if(document.activeElement!==$('prog')) $('prog').value=prog();
+  const spr=D.alarm.sprawdzono&&D.alarm.sprawdzono.toDate();
+  $('mailInfo').textContent=!spr?'Powiadomienia na maila nie są jeszcze włączone. Alarm działa tylko na tej stronie.'
+    :dniMiedzy(spr,new Date())>2?`Uwaga: mail ostatnio sprawdzał leki ${dzienData(spr)} – powiadomienia mogły przestać działać.`
+    :`Maile działają. Ostatnie sprawdzenie: ${kiedyTekst(spr)}.`;
+}
+
+function oknoLeku(lek){
+  otworzOkno(`<h2>${lek?'Popraw lek':'Nowy lek'}</h2>
+    <div class="pole"><label for="edNazwa">Nazwa leku</label><input id="edNazwa" value="${lek?esc(lek.nazwa):''}" autocomplete="off"></div>
+    <div class="pole"><label for="edDziennie">Ile tabletek dziennie</label><input id="edDziennie" inputmode="decimal" autocomplete="off" value="${lek?liczba(lek.naDzien):''}"></div>
+    <p class="blad" role="alert"></p>
+    <div class="przyciski"><button data-a="ok">Zapisz</button>${lek?'<button class="usun" data-a="usun">Usuń lek</button>':''}<button class="drugi" data-a="anuluj">Anuluj</button></div>`,a=>{
+    if(a==='anuluj') return zamknijOkno();
+    if(a==='usun'){
+      if(!confirm(`Usunąć ${lek.nazwa} z wykazu i magazynu?`)) return;
+      db.collection('leki').doc(lek.id).delete().catch(nieUdalo); zamknijOkno(); toast('Usunięto'); return;
+    }
+    const nazwa=$('edNazwa').value.trim(), naDzien=num($('edDziennie').value), blad=oknoForm.querySelector('.blad');
+    if(!nazwa){ blad.textContent='Wpisz nazwę leku.'; return; }
+    if(naDzien===null||naDzien<0||naDzien>50){ blad.textContent='Wpisz, ile tabletek dziennie (np. 1 albo 0,5).'; return; }
+    if(lek){
+      const dane={nazwa,naDzien}, s=stanLeku(lek);
+      // zmiana dawki: to, co już zużyto starą dawką, zostaje odjęte, nowa liczy się od dziś
+      if(s.znany&&naDzien!==lek.naDzien){ dane.stan=s.teraz; dane.stanData=TS(new Date()); }
+      db.collection('leki').doc(lek.id).update(dane).catch(nieUdalo);
+    } else db.collection('leki').add({nazwa,naDzien,stan:null,stanData:null}).catch(nieUdalo);
+    zamknijOkno(); toast('Zapisano');
+  });
+}
+
+function oknoStanu(lek){
+  const s=stanLeku(lek);
+  otworzOkno(`<h2>${esc(lek.nazwa)}</h2>
+    <p>${s.znany?`Według wyliczenia zostało ok. ${liczba(s.teraz)} tabl.`:'Stan nie był jeszcze wpisany.'}</p>
+    <div class="pole"><label for="edStan">Ile tabletek</label><input id="edStan" inputmode="decimal" autocomplete="off"></div>
+    <p class="blad" role="alert"></p>
+    <div class="przyciski"><button data-a="ok">Tyle mam teraz</button>${s.znany?'<button class="drugi" data-a="dodaj">Dokupiono – dodaj do stanu</button>':''}<button class="drugi" data-a="anuluj">Anuluj</button></div>`,a=>{
+    if(a==='anuluj') return zamknijOkno();
+    const n=num($('edStan').value);
+    if(n===null||n<0){ oknoForm.querySelector('.blad').textContent='Wpisz liczbę tabletek.'; return; }
+    db.collection('leki').doc(lek.id).update({stan:a==='dodaj'?s.teraz+n:n,stanData:TS(new Date())}).catch(nieUdalo);
+    zamknijOkno(); toast('Zapisano');
+  });
+}
+
+$('btnDodajLek').onclick=()=>oknoLeku(null);
+$('przLeki').addEventListener('click',e=>{ const z=e.target.dataset.z; if(z) location.hash=z==='wykaz'?'#leki':'#leki/magazyn'; });
+$('listaWykaz').addEventListener('click',e=>{ const b=e.target.closest('[data-id]'); if(b) oknoLeku(D.leki.find(l=>l.id===b.dataset.id)); });
+$('listaMagazyn').addEventListener('click',e=>{ const b=e.target.closest('[data-id]'); if(b) oknoStanu(D.leki.find(l=>l.id===b.dataset.id)); });
+$('prog').addEventListener('change',()=>{
+  const n=Math.round(num($('prog').value)||0);
+  if(n<1||n>120){ $('prog').value=prog(); toast('Podaj od 1 do 120 dni'); return; }
+  db.collection('ustawienia').doc('alarm').set({prog:n},{merge:true}).catch(nieUdalo);
+  toast('Zapisano');
+});
+
+// ---------- nawigacja i odświeżanie ----------
+const EKRANY=['ekranLogin','ekranStart','ekranCukier','ekranCisnienie','ekranLeki'];
+const pokazEkran=id=>EKRANY.forEach(e=>{ $(e).hidden=e!==id; });
+function trasa(){
+  if(!auth.currentUser) return pokazEkran('ekranLogin');
+  const [a,b]=location.hash.slice(1).split('/');
+  if(okno.open) zamknijOkno();
+  if(POMIARY[a]){ pokazEkran(POMIARY[a].ekran); POMIARY[a].naTeraz(); rysujWynik(a); }
+  else if(a==='leki'){ UI.zakladka=b==='magazyn'?'magazyn':'wykaz'; pokazEkran('ekranLeki'); rysujLeki(); }
+  else pokazEkran('ekranStart');
+  scrollTo(0,0);
+}
+function odswiez(){
+  rysujStart(); rysujAlarm();
+  Object.keys(POMIARY).forEach(id=>{ if(!$(POMIARY[id].ekran).hidden) rysujWynik(id); });
+  if(!$('ekranLeki').hidden) rysujLeki();
+}
+addEventListener('hashchange',trasa);
+addEventListener('resize',()=>{ Object.keys(POMIARY).forEach(id=>{ if(!$(POMIARY[id].ekran).hidden&&UI[id].widok==='wykres') rysujWynik(id); }); });
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&auth.currentUser) odswiez(); }); // nowy dzień = nowe wyliczenie leków
+Object.keys(POMIARY).forEach(zbudujEkranPomiaru);
+
+// ---------- dane na żywo ----------
+let subskrypcje=[];
+function odBazy(e){
+  console.error(e);
+  if(/permission-denied/.test(e.code||'')) alert('To konto nie ma dostępu do danych.');
+}
+function startDanych(){
+  const naLiscie=(nazwa,q)=>q.onSnapshot(sn=>{ D[nazwa]=sn.docs.map(d=>Object.assign({id:d.id},d.data())); odswiez(); },odBazy);
+  subskrypcje=[
+    naLiscie('cukier',db.collection('cukier').orderBy('kiedy')),
+    naLiscie('cisnienie',db.collection('cisnienie').orderBy('kiedy')),
+    naLiscie('leki',db.collection('leki')),
+    db.collection('ustawienia').doc('alarm').onSnapshot(d=>{ D.alarm=d.data()||{}; odswiez(); },odBazy)
+  ];
+}
+function stopDanych(){ subskrypcje.forEach(u=>u()); subskrypcje=[]; D.cukier=[]; D.cisnienie=[]; D.leki=[]; D.alarm={}; }
+
+// ---------- logowanie ----------
+$('fLogin').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const blad=$('lBlad'), login=$('lLogin').value.trim().toLowerCase(), haslo=$('lHaslo').value, mail=`${LOGIN}@${DOMENA}`;
+  blad.textContent='';
+  if(login!==LOGIN){ blad.textContent='Zły login lub hasło.'; return; }
+  $('lBtn').disabled=true;
+  try{
+    try{ await auth.signInWithEmailAndPassword(mail,haslo); }
+    catch(e1){
+      // pierwsze logowanie zakłada konto; gdy konto już jest, to po prostu złe hasło
+      if(!/invalid|not-found|wrong-password/.test(e1.code||'')) throw e1;
+      await auth.createUserWithEmailAndPassword(mail,haslo);
+    }
+    $('lHaslo').value='';
+  }catch(e2){
+    blad.textContent=/email-already-in-use|weak-password/.test(e2.code||'')?'Zły login lub hasło.'
+      :/network/.test(e2.code||'')?'Brak połączenia z internetem.':/too-many/.test(e2.code||'')?'Za dużo prób. Spróbuj za kilka minut.':'Nie udało się zalogować.';
+  }finally{ $('lBtn').disabled=false; }
+});
+$('btnWyloguj').onclick=()=>{ if(confirm('Wylogować? Trzeba będzie znów wpisać hasło.')) auth.signOut(); };
+auth.onAuthStateChanged(u=>{
+  stopDanych();
+  if(u) startDanych();
+  trasa();
+});
+})();
+</script>
+</body>
+</html>

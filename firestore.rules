@@ -1,0 +1,9 @@
+rules_version = '2';
+// Zdrowie Taty – dane czyta i zapisuje wyłącznie jedno konto.
+service cloud.firestore {
+  match /databases/{db}/documents {
+    match /{dokument=**} {
+      allow read, write: if request.auth != null && request.auth.token.email == 'guldorf@tata.app';
+    }
+  }
+}
