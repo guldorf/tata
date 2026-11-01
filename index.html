@@ -113,6 +113,16 @@ tbody tr{cursor:pointer}
 .dawka .wart{display:flex;align-items:center;justify-content:center;height:40px;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
 .lek .dawki{margin:8px 0 6px}
 .razem{font-size:17px;margin:8px 0 0}
+.slupki{position:relative;--im:104px;--wa:58px;padding-top:24px}
+button.slupek{display:grid;grid-template-columns:var(--im) minmax(0,1fr) var(--wa);gap:0 8px;align-items:center;width:100%;min-height:46px;padding:2px 0;border-radius:0;background:none;color:var(--tekst);font-size:15px;font-weight:400;line-height:1.15;text-align:left}
+.slupek .imie{font-weight:600;overflow-wrap:anywhere}
+.slupek .tor{display:block;height:20px;background:#f0f2f1}
+.slupek .pas{display:block;height:20px;border-radius:0 4px 4px 0}
+.slupek .dni{text-align:right;font-variant-numeric:tabular-nums}
+.slupek .dni.nisko{color:var(--alarm);font-weight:700}
+.prog-linia{position:absolute;top:22px;bottom:0;width:2px;margin-left:-1px;background:#111;pointer-events:none;
+  left:calc(var(--im) + 8px + (100% - var(--im) - var(--wa) - 16px) * var(--p))}
+.prog-linia span{position:absolute;top:-22px;left:50%;transform:translateX(-50%);font-size:14px;font-weight:700;white-space:nowrap}
 .ustawienie{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:12px;align-items:center}
 .ustawienie label{margin:0;font-size:17px}
 .mailinfo{font-size:15px;color:var(--tekst2);margin:10px 0 0}
@@ -175,6 +185,7 @@ dialog .pole{margin-bottom:12px}
     <button id="btnDodajLek">+ Dodaj lek</button>
   </div>
   <div id="magazyn" hidden>
+    <div class="karta" id="wykresLeki"></div>
     <div id="listaMagazyn"></div>
     <div class="karta">
       <div class="ustawienie">
@@ -438,6 +449,36 @@ function rysujStart(){
   $('ostLeki').textContent=n?`Wykaz: ${n} ${n===1?'lek':n%10>=2&&n%10<=4&&(n<10||n>20)?'leki':'leków'}`:'Wykaz jest pusty';
 }
 
+// Kolor należy do leku, nie do miejsca na wykresie: zależy od id, więc nie zmienia się przy sortowaniu.
+const KOLORY_LEKOW=['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#6250d6','#67B437','#008f9c','#a8601a','#25a9d6','#b0307f'];
+function koloryLekow(){
+  const zajete=new Set(), wynik={};
+  D.leki.map(l=>l.id).sort().forEach(id=>{
+    let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))>>>0;
+    let i=h%KOLORY_LEKOW.length;
+    for(let n=0;n<KOLORY_LEKOW.length&&zajete.has(i);n++) i=(i+1)%KOLORY_LEKOW.length;
+    zajete.add(i); wynik[id]=KOLORY_LEKOW[i];
+  });
+  return wynik;
+}
+const tekstDni=n=>n===0?'brak':n===1?'1 dzień':n+' dni';
+
+// Słupki poziome od najkrótszego zapasu, z linią progu alarmu.
+function rysujWykresLekow(){
+  const box=$('wykresLeki'), p=prog();
+  const leki=D.leki.map(l=>({l,s:stanLeku(l)})).filter(x=>x.s.znany&&x.s.dni!==Infinity).sort((a,b)=>a.s.dni-b.s.dni);
+  box.hidden=!leki.length;
+  if(!leki.length) return;
+  const kolory=koloryLekow(), naj=leki[leki.length-1].s.dni, sufit=Math.max(60,6*p);
+  const skala=Math.max(Math.min(naj,sufit),2*p); // bardzo długi zapas nie spłaszcza reszty, a linia progu zawsze się mieści
+  box.innerHTML=`<h2>Na ile dni starczą leki</h2><div class="slupki">
+    ${leki.map(({l,s})=>`<button class="slupek" data-id="${esc(l.id)}"><span class="imie">${esc(l.nazwa)}</span>
+      <span class="tor"><span class="pas" style="width:${Math.min(100,s.dni/skala*100)}%;background:${kolory[l.id]}"></span></span>
+      <span class="dni${s.dni<=p?' nisko':''}">${tekstDni(s.dni)}</span></button>`).join('')}
+    <div class="prog-linia" style="--p:${p/skala}"><span>${tekstDni(p)}</span></div></div>
+    ${naj>skala?`<p class="wskazowka">Pełny pasek: ${skala} dni lub więcej.</p>`:''}`;
+}
+
 function rysujLeki(){
   document.querySelectorAll('#przLeki button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.z===UI.zakladka));
   $('wykaz').hidden=UI.zakladka!=='wykaz'; $('magazyn').hidden=UI.zakladka!=='magazyn';
@@ -451,6 +492,7 @@ function rysujLeki(){
     const reszta=s.dni===Infinity?'Nie ubywa (0 dziennie)':s.dni===0?'Lek się skończył':`Starczy na ${s.dni===1?'1 dzień':s.dni+' dni'}, do ${dzienData(s.koniec)}`;
     return `<button class="lek" data-id="${esc(l.id)}"><b>${esc(l.nazwa)}</b><span class="ile">Zostało ok. ${liczba(s.teraz)} tabl.</span><br><span class="${alarm?'nisko':''}">${reszta}</span>${alarm?'<br><span class="zamow">Zamów</span>':''}</button>`;
   }).join(''):'<p class="pusto">Najpierw dodaj leki w wykazie.</p>';
+  rysujWykresLekow();
   if(document.activeElement!==$('prog')) $('prog').value=prog();
   const spr=D.alarm.sprawdzono&&D.alarm.sprawdzono.toDate();
   $('mailInfo').textContent=!spr?'Powiadomienia na maila nie są jeszcze włączone. Alarm działa tylko na tej stronie.'
@@ -531,7 +573,7 @@ function oknoStanu(lek){
 $('btnDodajLek').onclick=()=>oknoLeku(null);
 $('przLeki').addEventListener('click',e=>{ const z=e.target.dataset.z; if(z) location.hash=z==='wykaz'?'#leki':'#leki/magazyn'; });
 $('listaWykaz').addEventListener('click',e=>{ const b=e.target.closest('[data-id]'); if(b) oknoLeku(D.leki.find(l=>l.id===b.dataset.id)); });
-$('listaMagazyn').addEventListener('click',e=>{ const b=e.target.closest('[data-id]'); if(b) oknoStanu(D.leki.find(l=>l.id===b.dataset.id)); });
+['listaMagazyn','wykresLeki'].forEach(id=>$(id).addEventListener('click',e=>{ const b=e.target.closest('[data-id]'); if(b) oknoStanu(D.leki.find(l=>l.id===b.dataset.id)); }));
 $('prog').addEventListener('change',()=>{
   const n=Math.round(num($('prog').value)||0);
   if(n<1||n>120){ $('prog').value=prog(); toast('Podaj od 1 do 120 dni'); return; }
