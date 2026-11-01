@@ -9,7 +9,7 @@ Jeden plik `index.html` + Firebase (Firestore i logowanie) + GitHub Pages, jak w
 |---|---|
 | `cukier` | `wartosc`, `kiedy` |
 | `cisnienie` | `gorne`, `dolne`, `puls`, `kiedy` |
-| `leki` | `nazwa`, `naDzien`, `stan`, `stanData` |
+| `leki` | `nazwa`, `dawki` (5 pór: przed śniadaniem, po śniadaniu, po obiedzie, po kolacji, na noc), `naDzien` (suma dawek), `stan`, `stanData` |
 | `ustawienia/alarm` | `prog` (dni), `sprawdzono` i `wyslano` (zapisuje skrypt maila) |
 
 Dostęp ma tylko konto `guldorf@tata.app` (`firestore.rules`). Hasła nie ma w kodzie: pierwsze logowanie na stronie zakłada konto.
@@ -23,7 +23,9 @@ Alarm włącza się, gdy leku zostaje na `prog` dni lub mniej.
 ## Mail
 
 `alarm-mail.gs` działa w Google Apps Script na koncie właściciela, codziennie około 8:00, i wysyła maila na to konto.
-Pierwszy mail idzie po przekroczeniu progu, potem co 3 dni, dopóki stan leku nie zostanie uzupełniony.
+Pierwszy mail idzie po przekroczeniu progu (domyślnie 10 dni), potem co 3 dni, dopóki stan leku nie zostanie uzupełniony.
+Mail wymienia leki do zamówienia i te, które skończą się niedługo (do 2 x próg), oraz pokazuje słupki z zapasem wszystkich leków.
+Funkcja `wyslijProbny` wysyła taki mail od razu, żeby zobaczyć, jak wygląda.
 Strona pokazuje w Magazynie, kiedy skrypt ostatnio sprawdzał leki.
 
 Instalacja: nowy projekt na script.google.com, wklej plik, wpisz `HASLO`, wybierz funkcję `zainstaluj`, Uruchom, zezwól na dostęp.

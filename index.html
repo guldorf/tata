@@ -104,6 +104,15 @@ tbody tr{cursor:pointer}
 .lek .ile{font-size:19px}
 .lek .nisko{color:var(--alarm);font-weight:700}
 .zamow{display:inline-block;margin-top:6px;padding:3px 12px;border-radius:999px;background:var(--alarm);color:#fff;font-weight:700;font-size:16px}
+.dawki{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:2px solid var(--os);border-radius:12px;overflow:hidden;background:#fff}
+.dawka{display:flex;flex-direction:column;min-width:0;border-left:1px solid var(--os)}
+.dawka:first-child{border-left:0}
+.dawka .pora{display:flex;align-items:center;justify-content:center;min-height:50px;margin:0;padding:3px 1px;background:#eef1ef;font-size:12px;line-height:1.15;font-weight:600;color:var(--tekst2);text-align:center}
+.dawka input{height:52px;border:0;border-radius:0;padding:0;text-align:center;font-size:21px}
+.dawka input:focus{outline:2px solid var(--akcent);outline-offset:-2px}
+.dawka .wart{display:flex;align-items:center;justify-content:center;height:40px;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.lek .dawki{margin:8px 0 6px}
+.razem{font-size:17px;margin:8px 0 0}
 .ustawienie{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:12px;align-items:center}
 .ustawienie label{margin:0;font-size:17px}
 .mailinfo{font-size:15px;color:var(--tekst2);margin:10px 0 0}
@@ -192,7 +201,8 @@ const CFG = {
   messagingSenderId: "598608145719",
   appId: "1:598608145719:web:c25fd4046f1c82a272beb2"
 };
-const DOMENA = 'tata.app', LOGIN = 'guldorf', PROG_DOMYSLNY = 14;
+const DOMENA = 'tata.app', LOGIN = 'guldorf', PROG_DOMYSLNY = 10;
+const PORY = ['Przed śniada­niem','Po śniada­niu','Po obiedzie','Po kolacji','Na noc'];
 
 firebase.initializeApp(CFG);
 const auth = firebase.auth(), db = firebase.firestore();
@@ -378,6 +388,7 @@ function otworzOkno(html,obsluga){
   oknoForm.innerHTML=html;
   oknoForm.onclick=e=>{ const b=e.target.closest('button[data-a]'); if(!b) return; e.preventDefault(); obsluga(b.dataset.a); };
   oknoForm.onsubmit=e=>{ e.preventDefault(); obsluga('ok'); };
+  oknoForm.oninput=null;
   okno.showModal();
 }
 const zamknijOkno=()=>okno.close();
@@ -431,7 +442,7 @@ function rysujLeki(){
   document.querySelectorAll('#przLeki button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.z===UI.zakladka));
   $('wykaz').hidden=UI.zakladka!=='wykaz'; $('magazyn').hidden=UI.zakladka!=='magazyn';
   const abc=D.leki.slice().sort((a,b)=>a.nazwa.localeCompare(b.nazwa,'pl'));
-  $('listaWykaz').innerHTML=abc.length?abc.map(l=>`<button class="lek" data-id="${esc(l.id)}"><b>${esc(l.nazwa)}</b><span class="ile">${liczba(l.naDzien)} tabl. dziennie</span></button>`).join('')
+  $('listaWykaz').innerHTML=abc.length?abc.map(l=>`<button class="lek" data-id="${esc(l.id)}"><b>${esc(l.nazwa)}</b>${htmlDawek(l)}<span class="ile">Razem ${liczba(l.naDzien)} tabl. dziennie</span></button>`).join('')
     :'<p class="pusto">Dodaj pierwszy lek.</p>';
   const wg=abc.map(l=>({l,s:stanLeku(l)})).sort((a,b)=>(a.s.znany?a.s.dni:-1)-(b.s.znany?b.s.dni:-1));
   $('listaMagazyn').innerHTML=wg.length?wg.map(({l,s})=>{
@@ -447,10 +458,30 @@ function rysujLeki(){
     :`Maile działają. Ostatnie sprawdzenie: ${kiedyTekst(spr)}.`;
 }
 
+// prostokąt z porami dnia: same wartości na liście, pola do wpisania w oknie
+function htmlDawek(lek,edycja){
+  const d=(lek&&lek.dawki)||[];
+  return `<span class="dawki" style="display:grid">${PORY.map((p,i)=>{
+    const v=d[i]>0?liczba(d[i]):'';
+    return `<span class="dawka">${edycja
+      ?`<label class="pora" for="edDawka${i}">${p}</label><input id="edDawka${i}" inputmode="decimal" autocomplete="off" value="${v}" aria-label="${p.replace('­','')}">`
+      :`<span class="pora">${p}</span><span class="wart">${v||'–'}</span>`}</span>`;
+  }).join('')}</span>`;
+}
+// zwraca tablicę 5 dawek, null gdy wszystkie puste, albo tekst błędu
+function czytajDawki(){
+  const t=PORY.map((p,i)=>$('edDawka'+i).value.trim());
+  if(t.every(s=>!s)) return null;
+  const d=t.map(s=>s?num(s):0);
+  return d.some(v=>v===null||v<0||v>20)?'Dawka to liczba, np. 1 albo 0,5.':d;
+}
+
 function oknoLeku(lek){
+  const stara=lek&&!lek.dawki;
   otworzOkno(`<h2>${lek?'Popraw lek':'Nowy lek'}</h2>
     <div class="pole"><label for="edNazwa">Nazwa leku</label><input id="edNazwa" value="${lek?esc(lek.nazwa):''}" autocomplete="off"></div>
-    <div class="pole"><label for="edDziennie">Ile tabletek dziennie</label><input id="edDziennie" inputmode="decimal" autocomplete="off" value="${lek?liczba(lek.naDzien):''}"></div>
+    <div class="pole"><label>Dawki (ile tabletek o danej porze)</label>${htmlDawek(lek,true)}
+      <p class="razem" id="edRazem"></p></div>
     <p class="blad" role="alert"></p>
     <div class="przyciski"><button data-a="ok">Zapisz</button>${lek?'<button class="usun" data-a="usun">Usuń lek</button>':''}<button class="drugi" data-a="anuluj">Anuluj</button></div>`,a=>{
     if(a==='anuluj') return zamknijOkno();
@@ -458,17 +489,28 @@ function oknoLeku(lek){
       if(!confirm(`Usunąć ${lek.nazwa} z wykazu i magazynu?`)) return;
       db.collection('leki').doc(lek.id).delete().catch(nieUdalo); zamknijOkno(); toast('Usunięto'); return;
     }
-    const nazwa=$('edNazwa').value.trim(), naDzien=num($('edDziennie').value), blad=oknoForm.querySelector('.blad');
+    const nazwa=$('edNazwa').value.trim(), dawki=czytajDawki(), blad=oknoForm.querySelector('.blad');
     if(!nazwa){ blad.textContent='Wpisz nazwę leku.'; return; }
-    if(naDzien===null||naDzien<0||naDzien>50){ blad.textContent='Wpisz, ile tabletek dziennie (np. 1 albo 0,5).'; return; }
+    if(typeof dawki==='string'){ blad.textContent=dawki; return; }
+    if(!dawki&&!stara){ blad.textContent='Wpisz dawkę przynajmniej przy jednej porze.'; return; }
     if(lek){
-      const dane={nazwa,naDzien}, s=stanLeku(lek);
-      // zmiana dawki: to, co już zużyto starą dawką, zostaje odjęte, nowa liczy się od dziś
-      if(s.znany&&naDzien!==lek.naDzien){ dane.stan=s.teraz; dane.stanData=TS(new Date()); }
+      const dane={nazwa}, s=stanLeku(lek);
+      if(dawki){
+        dane.dawki=dawki; dane.naDzien=dawki.reduce((a,b)=>a+b,0);
+        // zmiana dawki: to, co już zużyto starą dawką, zostaje odjęte, nowa liczy się od dziś
+        if(s.znany&&dane.naDzien!==lek.naDzien){ dane.stan=s.teraz; dane.stanData=TS(new Date()); }
+      }
       db.collection('leki').doc(lek.id).update(dane).catch(nieUdalo);
-    } else db.collection('leki').add({nazwa,naDzien,stan:null,stanData:null}).catch(nieUdalo);
+    } else db.collection('leki').add({nazwa,dawki,naDzien:dawki.reduce((a,b)=>a+b,0),stan:null,stanData:null}).catch(nieUdalo);
     zamknijOkno(); toast('Zapisano');
   });
+  // lek sprzed podziału na pory zachowuje swoją dawkę dzienną, dopóki nie zostanie rozpisana
+  const razem=()=>{
+    const d=czytajDawki();
+    $('edRazem').textContent=Array.isArray(d)?`Razem ${liczba(d.reduce((a,b)=>a+b,0))} tabl. dziennie`
+      :stara&&!d?`Teraz ${liczba(lek.naDzien)} tabl. dziennie. Rozpisz je na pory.`:'';
+  };
+  oknoForm.oninput=razem; razem();
 }
 
 function oknoStanu(lek){

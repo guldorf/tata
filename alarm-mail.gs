@@ -11,7 +11,7 @@ const KONFIG = {
   strefa: 'Europe/Warsaw',
   godzina: 8,          // o której sprawdzać (mniej więcej, Google daje okno 1 godziny)
   powtorzCoDni: 3,     // co ile dni przypominać o tym samym leku, dopóki stan nie zostanie uzupełniony
-  progDomyslny: 14
+  progDomyslny: 10
 };
 
 function zainstaluj() {
@@ -31,9 +31,17 @@ function sprawdzLeki() {
   const alarm = odczytajDokument_(bazaGet_('ustawienia/alarm', token, true) || {});
   const wynik = wybierzLeki_(leki, alarm, new Date());
   if (wynik.doWyslania) {
-    wyslijMail_(wynik.alarmowe);
+    MailApp.sendEmail(budujMail_(wynik));
   }
   bazaZapiszAlarm_(wynik.wyslano, token);
+}
+
+// Wysyła mail z obecnym stanem leków od razu, nawet gdy nic nie trzeba zamawiać. Do podejrzenia, jak wygląda.
+function wyslijProbny() {
+  const token = zaloguj_();
+  const leki = (bazaGet_('leki', token).documents || []).map(odczytajDokument_);
+  const alarm = odczytajDokument_(bazaGet_('ustawienia/alarm', token, true) || {});
+  MailApp.sendEmail(budujMail_(wybierzLeki_(leki, alarm, new Date())));
 }
 
 // Te same zasady co na stronie (stanLeku): stan to tabletki rano, przed dzisiejszą dawką.
@@ -43,14 +51,19 @@ function wybierzLeki_(leki, alarm, teraz) {
   const poprzednio = alarm.wyslano || {};
   const wyslano = {};
   const alarmowe = [];
+  const wszystkie = [];
+  const bezStanu = [];
   let doWyslania = false;
   leki.forEach(l => {
-    if (l.stan === null || l.stan === undefined || !l.stanData || !(l.naDzien > 0)) return;
+    if (!(l.naDzien > 0)) return;
+    if (l.stan === null || l.stan === undefined || !l.stanData) { bezStanu.push(l.nazwa); return; }
     const minelo = Math.max(0, dniMiedzy_(dzienTekst_(l.stanData), dzis));
     const zostalo = Math.max(0, l.stan - l.naDzien * minelo);
     const dni = Math.floor(zostalo / l.naDzien);
+    const lek = { nazwa: l.nazwa, zostalo: zostalo, dni: dni, koniec: dodajDni_(dzis, dni - 1) };
+    wszystkie.push(lek);
     if (dni > prog) return;
-    alarmowe.push({ nazwa: l.nazwa, zostalo: zostalo, dni: dni, koniec: dodajDni_(dzis, dni - 1) });
+    alarmowe.push(lek);
     const ostatni = poprzednio[l.id];
     if (!ostatni || dniMiedzy_(ostatni, dzis) >= KONFIG.powtorzCoDni) doWyslania = true;
     wyslano[l.id] = ostatni;
@@ -58,19 +71,60 @@ function wybierzLeki_(leki, alarm, teraz) {
   // mail wymienia wszystkie leki do zamówienia, więc liczy się jako przypomnienie o każdym z nich
   if (doWyslania) Object.keys(wyslano).forEach(id => { wyslano[id] = dzis; });
   alarmowe.sort((a, b) => a.dni - b.dni);
-  return { alarmowe: alarmowe, doWyslania: doWyslania, wyslano: wyslano };
+  wszystkie.sort((a, b) => a.dni - b.dni);
+  return { alarmowe: alarmowe, wszystkie: wszystkie, bezStanu: bezStanu, prog: prog, doWyslania: doWyslania, wyslano: wyslano };
 }
 
-function wyslijMail_(alarmowe) {
-  const wiersze = alarmowe.map(a => {
-    const kiedy = a.dni === 0 ? 'już brak' : `zostało na ${a.dni === 1 ? '1 dzień' : a.dni + ' dni'}, do ${dataPl_(a.koniec)}`;
-    return `${a.nazwa}: ${kiedy} (ok. ${String(Math.round(a.zostalo * 100) / 100).replace('.', ',')} tabl.)`;
-  });
-  MailApp.sendEmail({
+const dniTekst_ = n => (n === 1 ? '1 dzień' : n + ' dni');
+const opisLeku_ = a => {
+  const kiedy = a.dni === 0 ? 'już brak' : `zostało na ${dniTekst_(a.dni)}, do ${dataPl_(a.koniec)}`;
+  return `${a.nazwa}: ${kiedy}` + (a.zostalo > 0 ? ` (ok. ${String(Math.round(a.zostalo * 100) / 100).replace('.', ',')} tabl.)` : '');
+};
+const esc_ = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// Treść maila: co zamówić, co skończy się niedługo (do 2 x próg) i słupki z zapasem wszystkich leków.
+function budujMail_(w) {
+  const prog = w.prog;
+  const wkrotce = w.wszystkie.filter(a => a.dni > prog && a.dni <= 2 * prog);
+  const stany = { zamow: ['#d03b3b', 'zamów'], wkrotce: ['#fab219', 'wkrótce'], ok: ['#67B437', 'jest zapas'] };
+  const stan = a => (a.dni <= prog ? stany.zamow : a.dni <= 2 * prog ? stany.wkrotce : stany.ok);
+  const skala = Math.max(30, 3 * prog); // dłuższe zapasy mają pełny słupek, a dokładną liczbę dni w opisie
+
+  const sekcja = t => `<h2 style="font-size:17px;margin:22px 0 8px;color:#111">${t}</h2>`;
+  const lista = a => `<p style="margin:4px 0;font-size:16px;color:#111"><b>${esc_(a.nazwa)}</b>: ${esc_(opisLeku_(a).slice(a.nazwa.length + 2))}</p>`;
+  const slupek = a => {
+    const s = stan(a), szer = Math.min(100, Math.round(a.dni / skala * 100));
+    return `<tr><td style="padding:7px 0 0;font-size:15px;color:#111"><b>${esc_(a.nazwa)}</b></td>
+      <td align="right" style="padding:7px 0 0;font-size:15px;color:#4a4f4c;white-space:nowrap">${a.dni === 0 ? 'brak' : dniTekst_(a.dni)} · ${s[1]}</td></tr>
+      <tr><td colspan="2" style="padding:3px 0 0"><div style="background:#eef1ef;border-radius:4px;height:14px;line-height:14px;font-size:0">
+      ${szer > 0 ? `<div style="background:${s[0]};border-radius:0 4px 4px 0;height:14px;width:${szer}%"></div>` : ''}</div></td></tr>`;
+  };
+
+  const html = `<div style="font-family:system-ui,-apple-system,'Segoe UI',Arial,sans-serif;max-width:520px;margin:0 auto;color:#111">
+    ${w.alarmowe.length ? `<div style="background:#d03b3b;color:#fff;border-radius:12px;padding:12px 14px;font-size:20px;font-weight:700">Zamów leki: starczą na ${dniTekst_(prog)} lub mniej</div>${w.alarmowe.map(lista).join('')}`
+      : `<div style="background:#67B437;color:#2B2A29;border-radius:12px;padding:12px 14px;font-size:20px;font-weight:700">Nic nie trzeba teraz zamawiać</div>`}
+    ${wkrotce.length ? sekcja('Mogą się skończyć niedługo') + wkrotce.map(lista).join('') : ''}
+    ${sekcja('Na ile dni starczą wszystkie leki')}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">${w.wszystkie.map(slupek).join('')}</table>
+    <p style="font-size:13px;color:#4a4f4c;margin:10px 0 0">Zamów: do ${dniTekst_(prog)}. Wkrótce: do ${dniTekst_(2 * prog)}. Pełny słupek: ${dniTekst_(skala)} lub więcej.</p>
+    ${w.bezStanu.length ? `<p style="font-size:15px;margin:14px 0 0"><b>Bez wpisanego stanu:</b> ${w.bezStanu.map(esc_).join(', ')}</p>` : ''}
+    <p style="margin:20px 0 0"><a href="${KONFIG.strona}" style="display:inline-block;background:#67B437;color:#2B2A29;font-weight:700;text-decoration:none;border-radius:10px;padding:12px 18px">Otwórz magazyn</a></p>
+    <p style="font-size:13px;color:#4a4f4c;margin:10px 0 0">Po zakupie uzupełnij stan w magazynie.</p></div>`;
+
+  const body = [
+    w.alarmowe.length ? 'Leki taty, które trzeba zamówić:\n' + w.alarmowe.map(opisLeku_).join('\n') : 'Nic nie trzeba teraz zamawiać.',
+    wkrotce.length ? 'Mogą się skończyć niedługo:\n' + wkrotce.map(opisLeku_).join('\n') : '',
+    'Na ile dni starczą wszystkie leki:\n' + w.wszystkie.map(a => `${a.nazwa}: ${a.dni === 0 ? 'brak' : dniTekst_(a.dni)}`).join('\n'),
+    w.bezStanu.length ? 'Bez wpisanego stanu: ' + w.bezStanu.join(', ') : '',
+    'Po zakupie uzupełnij stan w magazynie:\n' + KONFIG.strona
+  ].filter(Boolean).join('\n\n');
+
+  return {
     to: Session.getEffectiveUser().getEmail(),
-    subject: 'Zamów leki: ' + alarmowe.map(a => a.nazwa).join(', '),
-    body: 'Leki taty, które trzeba zamówić:\n\n' + wiersze.join('\n') + '\n\nPo zakupie uzupełnij stan w magazynie:\n' + KONFIG.strona
-  });
+    subject: w.alarmowe.length ? 'Zamów leki: ' + w.alarmowe.map(a => a.nazwa).join(', ') : 'Zdrowie Taty: stan leków',
+    body: body,
+    htmlBody: html
+  };
 }
 
 // ---------- daty jako tekst rrrr-mm-dd w strefie Polski ----------
