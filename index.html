@@ -126,6 +126,8 @@ button.slupek{display:grid;grid-template-columns:var(--im) minmax(0,1fr) var(--w
 .ustawienie{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:12px;align-items:center}
 .ustawienie label{margin:0;font-size:17px}
 .mailinfo{font-size:15px;color:var(--tekst2);margin:10px 0 0}
+.drugi-mail{margin-top:14px}
+.drugi-mail input{font-size:18px}
 
 /* okno */
 dialog{border:0;border-radius:20px;padding:18px;width:min(520px,calc(100vw - 32px));color:var(--tekst)}
@@ -192,6 +194,8 @@ dialog .pole{margin-bottom:12px}
         <label for="prog">Alarmuj, gdy leku zostanie na tyle dni:</label>
         <input id="prog" type="number" inputmode="numeric" min="1" max="120">
       </div>
+      <div class="pole drugi-mail"><label for="drugiMail">Drugi adres e-mail do powiadomień</label>
+        <input id="drugiMail" type="email" inputmode="email" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="np. imie@poczta.pl"></div>
       <p class="mailinfo" id="mailInfo"></p>
     </div>
   </div>
@@ -494,10 +498,11 @@ function rysujLeki(){
   }).join(''):'<p class="pusto">Najpierw dodaj leki w wykazie.</p>';
   rysujWykresLekow();
   if(document.activeElement!==$('prog')) $('prog').value=prog();
+  if(document.activeElement!==$('drugiMail')) $('drugiMail').value=D.alarm.drugiMail||'';
   const spr=D.alarm.sprawdzono&&D.alarm.sprawdzono.toDate();
   $('mailInfo').textContent=!spr?'Powiadomienia na maila nie są jeszcze włączone. Alarm działa tylko na tej stronie.'
     :dniMiedzy(spr,new Date())>2?`Uwaga: mail ostatnio sprawdzał leki ${dzienData(spr)} – powiadomienia mogły przestać działać.`
-    :`Maile działają. Ostatnie sprawdzenie: ${kiedyTekst(spr)}.`;
+    :`Maile działają. Ostatnie sprawdzenie: ${kiedyTekst(spr)}.`+(D.alarm.drugiMail?` Kopia idzie też na ${D.alarm.drugiMail}.`:'');
 }
 
 // prostokąt z porami dnia: same wartości na liście, pola do wpisania w oknie
@@ -579,6 +584,13 @@ $('prog').addEventListener('change',()=>{
   if(n<1||n>120){ $('prog').value=prog(); toast('Podaj od 1 do 120 dni'); return; }
   db.collection('ustawienia').doc('alarm').set({prog:n},{merge:true}).catch(nieUdalo);
   toast('Zapisano');
+});
+$('drugiMail').addEventListener('change',()=>{
+  const m=$('drugiMail').value.trim().toLowerCase();
+  if(m&&!/^[^\s@,;]+@[^\s@,;]+\.[a-z]{2,}$/.test(m)){ toast('To nie wygląda na adres e-mail'); return; }
+  $('drugiMail').value=m;
+  db.collection('ustawienia').doc('alarm').set({drugiMail:m},{merge:true}).catch(nieUdalo);
+  toast(m?'Zapisano':'Usunięto drugi adres');
 });
 
 // ---------- nawigacja i odświeżanie ----------

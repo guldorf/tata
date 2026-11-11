@@ -31,7 +31,7 @@ function sprawdzLeki() {
   const alarm = odczytajDokument_(bazaGet_('ustawienia/alarm', token, true) || {});
   const wynik = wybierzLeki_(leki, alarm, new Date());
   if (wynik.doWyslania) {
-    MailApp.sendEmail(budujMail_(wynik));
+    MailApp.sendEmail(Object.assign(budujMail_(wynik), { to: adresaci_(alarm) }));
   }
   bazaZapiszAlarm_(wynik.wyslano, token);
 }
@@ -41,7 +41,15 @@ function wyslijProbny() {
   const token = zaloguj_();
   const leki = (bazaGet_('leki', token).documents || []).map(odczytajDokument_);
   const alarm = odczytajDokument_(bazaGet_('ustawienia/alarm', token, true) || {});
-  MailApp.sendEmail(budujMail_(wybierzLeki_(leki, alarm, new Date())));
+  MailApp.sendEmail(Object.assign(budujMail_(wybierzLeki_(leki, alarm, new Date())), { to: adresaci_(alarm) }));
+}
+
+// Właściciel skryptu plus drugi adres wpisany na stronie w Magazynie (jeśli jest poprawny).
+function adresaci_(alarm) {
+  const drugi = String(alarm.drugiMail || '').trim();
+  const adresy = [Session.getEffectiveUser().getEmail()];
+  if (/^[^\s@,;]+@[^\s@,;]+\.[a-z]{2,}$/i.test(drugi)) adresy.push(drugi);
+  return adresy.join(',');
 }
 
 // Te same zasady co na stronie (stanLeku): stan to tabletki rano, przed dzisiejszą dawką.
