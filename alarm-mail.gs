@@ -198,8 +198,9 @@ function policzRaport_(od, doDnia, cukier, leki, alarm, probny) {
   const dni = dniMiedzy_(od, doDnia);
 
   // leki: stan rano w dniu doDnia, czyli po ostatniej dawce raportowanego okresu (te same zasady co sprawdzLeki)
+  const kolory = koloryLekow_(leki);
   const lekiR = leki.filter(l => l.naDzien > 0).map(l => {
-    const lek = { nazwa: l.nazwa, naDzien: l.naDzien, wOkresie: l.naDzien * dni, znany: !(l.stan === null || l.stan === undefined || !l.stanData) };
+    const lek = { nazwa: l.nazwa, kolor: kolory[l.id], naDzien: l.naDzien, wOkresie: l.naDzien * dni, znany: !(l.stan === null || l.stan === undefined || !l.stanData) };
     if (lek.znany) {
       lek.zostalo = Math.max(0, l.stan - l.naDzien * Math.max(0, dniMiedzy_(dzienTekst_(l.stanData), doDnia)));
       lek.dni = Math.floor(lek.zostalo / l.naDzien);
@@ -221,6 +222,48 @@ function policzRaport_(od, doDnia, cukier, leki, alarm, probny) {
     bezStanu: lekiR.filter(l => !l.znany).map(l => l.nazwa)
   };
 }
+
+// Kolor należy do leku, jak na stronie (koloryLekow w index.html): zależy od id, więc w mailu leki mają te same kolory co w aplikacji.
+const KOLORY_LEKOW_ = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#67B437', '#008f9c', '#a8601a', '#25a9d6', '#b0307f'];
+function koloryLekow_(leki) {
+  const zajete = new Set(), wynik = {};
+  leki.map(l => l.id).sort().forEach(id => {
+    let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    let i = h % KOLORY_LEKOW_.length;
+    for (let n = 0; n < KOLORY_LEKOW_.length && zajete.has(i); n++) i = (i + 1) % KOLORY_LEKOW_.length;
+    zajete.add(i); wynik[id] = KOLORY_LEKOW_[i];
+  });
+  return wynik;
+}
+
+// Wykres „Na ile dni starczą leki" jak w Magazynie na stronie: poziome paski od najkrótszego zapasu, czarna linia progu.
+// Programy pocztowe nie znają pozycjonowania, więc tor paska to dwie komórki (do progu i za progiem), a linia to lewa krawędź drugiej.
+function wykresLekowHtml_(leki, p) {
+  const naj = leki[leki.length - 1].dni, sufit = Math.max(60, 6 * p);
+  const skala = Math.max(Math.min(naj, sufit), 2 * p); // te same zasady co na stronie
+  const lewa = Math.round(p / skala * 1000) / 10, prawa = Math.round((100 - lewa) * 10) / 10;
+  const linia = 'border-left:2px solid #111';
+  const pas = (proc, kolor, zaokr) => proc > 0
+    ? `<div style="background:${kolor};height:20px;line-height:20px;font-size:0;width:${Math.min(100, Math.round(proc * 10) / 10)}%;${zaokr ? 'border-radius:0 4px 4px 0' : ''}">&nbsp;</div>` : '';
+  const wiersz = l => {
+    const doProgu = Math.min(l.dni, p) / p * 100, zaProgiem = l.dni > p ? (Math.min(l.dni, skala) - p) / (skala - p) * 100 : 0;
+    const tor = 'background:#f0f2f1;height:20px;font-size:0;line-height:20px';
+    return `<tr>
+      <td width="104" style="width:104px;height:46px;padding:0 8px 0 0;font-size:15px;font-weight:600;color:#111;line-height:1.15;word-break:break-word">${esc_(l.nazwa)}</td>
+      <td style="padding:0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;table-layout:fixed"><tr>
+        <td width="${lewa}%" style="width:${lewa}%;padding:13px 0"><div style="${tor}">${pas(doProgu, l.kolor, l.dni <= p)}</div></td>
+        <td width="${prawa}%" style="width:${prawa}%;padding:13px 0;${linia}"><div style="${tor}">${pas(zaProgiem, l.kolor, true)}</div></td>
+      </tr></table></td>
+      <td width="58" align="right" style="width:58px;padding:0 0 0 8px;font-size:15px;white-space:nowrap;${l.dni <= p ? 'color:#d03b3b;font-weight:700' : 'color:#111'}">${dniTekst2_(l.dni)}</td></tr>`;
+  };
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+    <tr><td></td><td style="padding:0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;table-layout:fixed"><tr>
+      <td width="${lewa}%" style="width:${lewa}%"></td>
+      <td width="${prawa}%" style="width:${prawa}%;${linia};padding:0 0 2px 4px;font-size:14px;font-weight:700;color:#111;white-space:nowrap">${dniTekst2_(p)}</td></tr></table></td><td></td></tr>
+    ${leki.map(wiersz).join('')}</table>
+    ${naj > skala ? `<p style="font-size:15px;color:#4a4f4c;margin:10px 0 0">Pełny pasek: ${skala} dni lub więcej.</p>` : ''}`;
+}
+const dniTekst2_ = n => (n === 0 ? 'brak' : dniTekst_(n));
 
 // Wykres liniowy wszystkich pomiarów z liniami granic, jako obrazek PNG do maila.
 function wykresCukru_(r) {
@@ -291,9 +334,17 @@ function budujRaport_(r) {
     ${porownanie ? `<p style="font-size:15px;margin:6px 0 0">${porownanie}</p>` : ''}`;
 
   const dopisek = l => `${r.probny ? 'Od początku miesiąca' : 'W miesiącu'} ${liczbaPl_(l.wOkresie)} tabl. (${liczbaPl_(l.naDzien)} dziennie), zostało ok. ${liczbaPl_(l.zostalo)} tabl.`;
+  const zuzycie = l => `<tr><td style="padding:3px 8px 3px 0;font-size:14px;color:#111">${esc_(l.nazwa)}</td>
+    <td align="right" style="padding:3px 8px;font-size:14px;color:#111;white-space:nowrap">${liczbaPl_(l.wOkresie)}</td>
+    <td align="right" style="padding:3px 0 3px 8px;font-size:14px;color:#4a4f4c;white-space:nowrap">${liczbaPl_(l.zostalo)}</td></tr>`;
   const lekiHtml = (r.leki.length
-    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">${r.leki.map(l => slupekHtml_(l, r.prog, dopisek(l))).join('')}</table>
-       <p style="font-size:13px;color:#4a4f4c;margin:10px 0 0">Słupek: na ile dni starczy lek. Zamów: do ${dniTekst_(r.prog)}. Pełny słupek: ${dniTekst_(skalaSlupkow_(r.prog))} lub więcej. Liczba tabletek według dawkowania.</p>`
+    ? `<p style="font-size:14px;color:#4a4f4c;margin:-4px 0 6px">${r.probny ? 'Stan na jutro rano' : 'Stan na 1 ' + MIESIACA_[(m + 1) % 12]}</p>
+       ${wykresLekowHtml_(r.leki, r.prog)}
+       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:16px">
+       <tr><td style="padding:0 8px 4px 0;font-size:13px;color:#4a4f4c">Tabletki według dawkowania</td>
+         <td align="right" style="padding:0 8px 4px;font-size:13px;color:#4a4f4c;white-space:nowrap">${r.probny ? 'od 1.' : 'w miesiącu'}</td>
+         <td align="right" style="padding:0 0 4px 8px;font-size:13px;color:#4a4f4c;white-space:nowrap">zostało</td></tr>
+       ${r.leki.map(zuzycie).join('')}</table>`
     : '<p style="font-size:16px">Brak leków z wpisanym stanem.</p>')
     + (r.bezStanu.length ? `<p style="font-size:15px;margin:12px 0 0"><b>Bez wpisanego stanu:</b> ${r.bezStanu.map(esc_).join(', ')}</p>` : '');
 
@@ -301,7 +352,7 @@ function budujRaport_(r) {
     <div style="background:#67B437;color:#2B2A29;border-radius:12px;padding:12px 14px"><div style="font-size:14px">Zdrowie Taty · podsumowanie</div>
       <div style="font-size:22px;font-weight:700">${okres}</div></div>
     ${sekcja('Cukier')}${cukierHtml}
-    ${sekcja(r.probny ? 'Leki: stan na jutro rano' : 'Leki: stan na początek ' + MIESIACA_[(m + 1) % 12])}${lekiHtml}
+    ${sekcja('Na ile dni starczą leki')}${lekiHtml}
     <p style="margin:22px 0 0"><a href="${KONFIG.strona.split('#')[0]}" style="display:inline-block;background:#67B437;color:#2B2A29;font-weight:700;text-decoration:none;border-radius:10px;padding:12px 18px">Otwórz Zdrowie Taty</a></p></div>`;
 
   const body = [
