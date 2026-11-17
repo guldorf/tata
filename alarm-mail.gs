@@ -104,15 +104,14 @@ const esc_ = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace
 // Treść maila: co zamówić, co skończy się niedługo (do 2 x próg) i słupki z zapasem wszystkich leków.
 // Słupek zapasu jednego leku (wiersze tabeli). Dłuższe zapasy niż skala mają pełny słupek, a dokładną liczbę dni w opisie.
 const skalaSlupkow_ = prog => Math.max(30, 3 * prog);
-function slupekHtml_(a, prog, dopisek) {
+function slupekHtml_(a, prog) {
   const stany = { zamow: ['#d03b3b', 'zamów'], wkrotce: ['#fab219', 'wkrótce'], ok: ['#67B437', 'jest zapas'] };
   const s = a.dni <= prog ? stany.zamow : a.dni <= 2 * prog ? stany.wkrotce : stany.ok;
   const szer = Math.min(100, Math.round(a.dni / skalaSlupkow_(prog) * 100));
   return `<tr><td style="padding:7px 0 0;font-size:15px;color:#111"><b>${esc_(a.nazwa)}</b></td>
       <td align="right" style="padding:7px 0 0;font-size:15px;color:#4a4f4c;white-space:nowrap">${a.dni === 0 ? 'brak' : dniTekst_(a.dni)} · ${s[1]}</td></tr>
       <tr><td colspan="2" style="padding:3px 0 0"><div style="background:#eef1ef;border-radius:4px;height:14px;line-height:14px;font-size:0">
-      ${szer > 0 ? `<div style="background:${s[0]};border-radius:0 4px 4px 0;height:14px;width:${szer}%"></div>` : ''}</div></td></tr>`
-    + (dopisek ? `<tr><td colspan="2" style="padding:2px 0 0;font-size:13px;color:#4a4f4c">${dopisek}</td></tr>` : '');
+      ${szer > 0 ? `<div style="background:${s[0]};border-radius:0 4px 4px 0;height:14px;width:${szer}%"></div>` : ''}</div></td></tr>`;
 }
 
 function budujMail_(w) {
@@ -200,7 +199,7 @@ function policzRaport_(od, doDnia, cukier, leki, alarm, probny) {
   // leki: stan rano w dniu doDnia, czyli po ostatniej dawce raportowanego okresu (te same zasady co sprawdzLeki)
   const kolory = koloryLekow_(leki);
   const lekiR = leki.filter(l => l.naDzien > 0).map(l => {
-    const lek = { nazwa: l.nazwa, kolor: kolory[l.id], naDzien: l.naDzien, wOkresie: l.naDzien * dni, znany: !(l.stan === null || l.stan === undefined || !l.stanData) };
+    const lek = { nazwa: l.nazwa, kolor: kolory[l.id], naDzien: l.naDzien, znany: !(l.stan === null || l.stan === undefined || !l.stanData) };
     if (lek.znany) {
       lek.zostalo = Math.max(0, l.stan - l.naDzien * Math.max(0, dniMiedzy_(dzienTekst_(l.stanData), doDnia)));
       lek.dni = Math.floor(lek.zostalo / l.naDzien);
@@ -333,18 +332,9 @@ function budujRaport_(r) {
     <p style="font-size:15px;margin:12px 0 0">Poniżej ${KONFIG.cukierNisko}: <b>${c.nisko}</b> · ${KONFIG.cukierNisko}–${KONFIG.cukierWysoko}: <b>${c.liczba - c.nisko - c.wysoko}</b> · powyżej ${KONFIG.cukierWysoko}: <b>${c.wysoko}</b></p>
     ${porownanie ? `<p style="font-size:15px;margin:6px 0 0">${porownanie}</p>` : ''}`;
 
-  const dopisek = l => `${r.probny ? 'Od początku miesiąca' : 'W miesiącu'} ${liczbaPl_(l.wOkresie)} tabl. (${liczbaPl_(l.naDzien)} dziennie), zostało ok. ${liczbaPl_(l.zostalo)} tabl.`;
-  const zuzycie = l => `<tr><td style="padding:3px 8px 3px 0;font-size:14px;color:#111">${esc_(l.nazwa)}</td>
-    <td align="right" style="padding:3px 8px;font-size:14px;color:#111;white-space:nowrap">${liczbaPl_(l.wOkresie)}</td>
-    <td align="right" style="padding:3px 0 3px 8px;font-size:14px;color:#4a4f4c;white-space:nowrap">${liczbaPl_(l.zostalo)}</td></tr>`;
   const lekiHtml = (r.leki.length
     ? `<p style="font-size:14px;color:#4a4f4c;margin:-4px 0 6px">${r.probny ? 'Stan na jutro rano' : 'Stan na 1 ' + MIESIACA_[(m + 1) % 12]}</p>
-       ${wykresLekowHtml_(r.leki, r.prog)}
-       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:16px">
-       <tr><td style="padding:0 8px 4px 0;font-size:13px;color:#4a4f4c">Tabletki według dawkowania</td>
-         <td align="right" style="padding:0 8px 4px;font-size:13px;color:#4a4f4c;white-space:nowrap">${r.probny ? 'od 1.' : 'w miesiącu'}</td>
-         <td align="right" style="padding:0 0 4px 8px;font-size:13px;color:#4a4f4c;white-space:nowrap">zostało</td></tr>
-       ${r.leki.map(zuzycie).join('')}</table>`
+       ${wykresLekowHtml_(r.leki, r.prog)}`
     : '<p style="font-size:16px">Brak leków z wpisanym stanem.</p>')
     + (r.bezStanu.length ? `<p style="font-size:15px;margin:12px 0 0"><b>Bez wpisanego stanu:</b> ${r.bezStanu.map(esc_).join(', ')}</p>` : '');
 
@@ -360,7 +350,7 @@ function budujRaport_(r) {
     c.liczba ? `Cukier: średnio ${mg(c.srednia)}, najniżej ${mg(c.min)}, najwyżej ${mg(c.max)}, pomiarów ${c.liczba} (w ${c.dniZPomiarem} z ${r.dni} dni).\n`
       + `Poniżej ${KONFIG.cukierNisko}: ${c.nisko}, powyżej ${KONFIG.cukierWysoko}: ${c.wysoko}.` + (porownanie ? '\n' + porownanie : '')
       : 'Cukier: brak pomiarów.',
-    'Leki (na ile dni starczą):\n' + r.leki.map(l => `${l.nazwa}: ${l.dni === 0 ? 'brak' : dniTekst_(l.dni)}. ${dopisek(l)}`).join('\n'),
+    'Leki (na ile dni starczą):\n' + r.leki.map(l => `${l.nazwa}: ${dniTekst2_(l.dni)}`).join('\n'),
     r.bezStanu.length ? 'Bez wpisanego stanu: ' + r.bezStanu.join(', ') : '',
     KONFIG.strona.split('#')[0]
   ].filter(Boolean).join('\n\n');

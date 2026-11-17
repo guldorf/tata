@@ -34,7 +34,7 @@ Mail idzie na konto właściciela skryptu i na drugi adres wpisany w Magazynie.
 `raportMiesieczny` uruchamia się codziennie około 21:00 (`godzinaRaportu`), ale mail wysyła tylko w ostatni dzień miesiąca, za cały ten miesiąc.
 Cukier: średnia, najniższy i najwyższy odczyt, liczba pomiarów, wykres liniowy wszystkich odczytów z granicami 70 i 180 mg/dL (`cukierNisko`, `cukierWysoko`), porównanie średniej z poprzednim miesiącem.
 Wykres to obrazek z usługi Charts w Apps Script; gdyby się nie wygenerował, mail pokazuje słupki średnich dziennych zrobione z tabeli HTML.
-Leki: ten sam wykres co w Magazynie na stronie („Na ile dni starczą leki": kolory leków, linia progu, skala do 60 dni), stan na 1. dzień następnego miesiąca, a pod nim ile tabletek poszło w miesiącu według dawkowania i ile zostało.
+Leki: ten sam wykres co w Magazynie na stronie („Na ile dni starczą leki": kolory leków, linia progu, skala do 60 dni), stan na 1. dzień następnego miesiąca.
 Kolory liczy `koloryLekow_` tak samo jak `koloryLekow` w `index.html`; po zmianie jednego trzeba zmienić drugi.
 `wyslijRaportProbny` wysyła podsumowanie bieżącego miesiąca do dziś, tylko na adres właściciela.
 `zainstalujRaport` włącza sam wyzwalacz podsumowania, bez ruszania codziennego sprawdzania leków (`zainstaluj` włącza oba).
