@@ -27,6 +27,16 @@ Pierwszy mail idzie po przekroczeniu progu (domyślnie 10 dni), potem co 3 dni, 
 Mail wymienia leki do zamówienia i te, które skończą się niedługo (do 2 x próg), oraz pokazuje słupki z zapasem wszystkich leków.
 Funkcja `wyslijProbny` wysyła taki mail od razu, żeby zobaczyć, jak wygląda.
 Strona pokazuje w Magazynie, kiedy skrypt ostatnio sprawdzał leki.
+Mail idzie na konto właściciela skryptu i na drugi adres wpisany w Magazynie.
+
+### Podsumowanie miesiąca
+
+`raportMiesieczny` uruchamia się codziennie około 21:00 (`godzinaRaportu`), ale mail wysyła tylko w ostatni dzień miesiąca, za cały ten miesiąc.
+Cukier: średnia, najniższy i najwyższy odczyt, liczba pomiarów, wykres liniowy wszystkich odczytów z granicami 70 i 180 mg/dL (`cukierNisko`, `cukierWysoko`), porównanie średniej z poprzednim miesiącem.
+Wykres to obrazek z usługi Charts w Apps Script; gdyby się nie wygenerował, mail pokazuje słupki średnich dziennych zrobione z tabeli HTML.
+Leki: słupki, na ile dni starczy każdy lek od pierwszego dnia następnego miesiąca, oraz ile tabletek poszło w miesiącu według dawkowania i ile zostało.
+`wyslijRaportProbny` wysyła podsumowanie bieżącego miesiąca do dziś, tylko na adres właściciela.
+`zainstalujRaport` włącza sam wyzwalacz podsumowania, bez ruszania codziennego sprawdzania leków (`zainstaluj` włącza oba).
 
 Instalacja: nowy projekt na script.google.com, wklej plik, wpisz `HASLO`, wybierz funkcję `zainstaluj`, Uruchom, zezwól na dostęp.
 Hasło wpisuje się tylko w kopii na script.google.com, nigdy w tym repozytorium.
