@@ -1,5 +1,6 @@
-// Zdrowie Taty – codzienny mail, gdy leki trzeba zamówić, i podsumowanie miesiąca (cukier i leki) w ostatni dzień miesiąca.
-// Działa w Google Apps Script (script.google.com). Mail idzie na konto Google, na którym uruchomiono skrypt, i na drugi adres z Magazynu.
+// Zdrowie Taty i Zdrowie Marii – codzienny mail, gdy leki trzeba zamówić, i podsumowanie miesiąca w ostatni dzień miesiąca.
+// Każda osoba dostaje osobne maile. Działa w Google Apps Script (script.google.com).
+// Mail idzie na konto Google, na którym uruchomiono skrypt, i na drugi adres z Magazynu danej osoby.
 // Instalacja: wklej ten plik, wpisz HASLO poniżej, wybierz funkcję zainstaluj i kliknij Uruchom.
 
 const HASLO = 'WPISZ-HASLO-DO-STRONY';
@@ -7,7 +8,7 @@ const KONFIG = {
   apiKey: 'AIzaSyCHvavuReCdBmhsqyeCDfxO1W_CDYH70Nc',
   projekt: 'zdrowie-taty-7412',
   mail: 'guldorf@tata.app',
-  strona: 'https://guldorf.github.io/tata/#leki/magazyn',
+  adresStrony: 'https://guldorf.github.io/tata/',
   strefa: 'Europe/Warsaw',
   godzina: 8,          // o której sprawdzać (mniej więcej, Google daje okno 1 godziny)
   powtorzCoDni: 3,     // co ile dni przypominać o tym samym leku, dopóki stan nie zostanie uzupełniony
@@ -17,6 +18,14 @@ const KONFIG = {
   cukierWysoko: 180
 };
 
+// sciezka: gdzie w bazie leżą dane osoby (tata w kolekcjach głównych, Maria w osoby/maria/...), jak K() w index.html.
+// raport: sekcje podsumowania miesiąca, w tej kolejności.
+const OSOBY = [
+  { nazwa: 'Tata', tytul: 'Zdrowie Taty', kolor: '#67B437', sciezka: '', zapytanie: '', raport: ['cukier', 'leki'] },
+  { nazwa: 'Maria', tytul: 'Zdrowie Marii', kolor: '#f6b8cf', sciezka: 'osoby/maria/', zapytanie: '?osoba=maria', raport: ['cisnienie', 'cukier', 'leki'] }
+];
+const strona_ = (o, hash) => KONFIG.adresStrony + o.zapytanie + (hash || '');
+
 function zainstaluj() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('sprawdzLeki').timeBased().everyDays(1).atHour(KONFIG.godzina).inTimezone(KONFIG.strefa).create();
@@ -24,9 +33,10 @@ function zainstaluj() {
   sprawdzLeki();
   MailApp.sendEmail({
     to: Session.getEffectiveUser().getEmail(),
-    subject: 'Zdrowie Taty: powiadomienia o lekach włączone',
+    subject: 'Zdrowie Taty i Marii: powiadomienia o lekach włączone',
     body: 'Skrypt działa. Leki będą sprawdzane codziennie około godziny ' + KONFIG.godzina + ':00, '
-      + 'a podsumowanie miesiąca przyjdzie w ostatni dzień miesiąca około ' + KONFIG.godzinaRaportu + ':00.\n\n' + KONFIG.strona
+      + 'a podsumowanie miesiąca przyjdzie w ostatni dzień miesiąca około ' + KONFIG.godzinaRaportu + ':00, osobno dla każdej osoby.\n\n'
+      + OSOBY.map(o => o.tytul + ': ' + strona_(o)).join('\n')
   });
 }
 
@@ -36,26 +46,40 @@ function zainstalujRaport() {
   ScriptApp.newTrigger('raportMiesieczny').timeBased().everyDays(1).atHour(KONFIG.godzinaRaportu).inTimezone(KONFIG.strefa).create();
 }
 
+// Błąd przy jednej osobie nie zatrzymuje drugiej; na końcu wykonanie i tak kończy się błędem, żeby było widać go w dzienniku.
+function dlaKazdejOsoby_(fn) {
+  const bledy = [];
+  OSOBY.forEach(o => {
+    try { fn(o); } catch (e) { bledy.push(o.nazwa + ': ' + (e && e.message || e)); }
+  });
+  if (bledy.length) throw new Error(bledy.join('\n'));
+}
+
 function sprawdzLeki() {
   const token = zaloguj_();
-  const leki = (bazaGet_('leki', token).documents || []).map(odczytajDokument_);
-  const alarm = odczytajDokument_(bazaGet_('ustawienia/alarm', token, true) || {});
-  const wynik = wybierzLeki_(leki, alarm, new Date());
-  if (wynik.doWyslania) {
-    MailApp.sendEmail(Object.assign(budujMail_(wynik), { to: adresaci_(alarm) }));
-  }
-  bazaZapiszAlarm_(wynik.wyslano, token);
+  dlaKazdejOsoby_(o => {
+    const leki = (bazaGet_(o.sciezka + 'leki', token).documents || []).map(odczytajDokument_);
+    const alarm = odczytajDokument_(bazaGet_(o.sciezka + 'ustawienia/alarm', token, true) || {});
+    const wynik = wybierzLeki_(leki, alarm, new Date());
+    if (wynik.doWyslania) {
+      MailApp.sendEmail(Object.assign(budujMail_(wynik, o), { to: adresaci_(alarm) }));
+    }
+    bazaZapiszAlarm_(o, wynik.wyslano, token);
+  });
 }
 
-// Wysyła mail z obecnym stanem leków od razu, nawet gdy nic nie trzeba zamawiać. Do podejrzenia, jak wygląda.
+// Wysyła od razu mail z obecnym stanem leków (osobno dla każdej osoby, która ma leki), nawet gdy nic nie trzeba zamawiać.
 function wyslijProbny() {
   const token = zaloguj_();
-  const leki = (bazaGet_('leki', token).documents || []).map(odczytajDokument_);
-  const alarm = odczytajDokument_(bazaGet_('ustawienia/alarm', token, true) || {});
-  MailApp.sendEmail(Object.assign(budujMail_(wybierzLeki_(leki, alarm, new Date())), { to: adresaci_(alarm) }));
+  dlaKazdejOsoby_(o => {
+    const leki = (bazaGet_(o.sciezka + 'leki', token).documents || []).map(odczytajDokument_);
+    if (!leki.length) return;
+    const alarm = odczytajDokument_(bazaGet_(o.sciezka + 'ustawienia/alarm', token, true) || {});
+    MailApp.sendEmail(Object.assign(budujMail_(wybierzLeki_(leki, alarm, new Date()), o), { to: adresaci_(alarm) }));
+  });
 }
 
-// Właściciel skryptu plus drugi adres wpisany na stronie w Magazynie (jeśli jest poprawny).
+// Właściciel skryptu plus drugi adres wpisany na stronie w Magazynie tej osoby (jeśli jest poprawny).
 function adresaci_(alarm) {
   const drugi = String(alarm.drugiMail || '').trim();
   const adresy = [Session.getEffectiveUser().getEmail()];
@@ -114,69 +138,74 @@ function slupekHtml_(a, prog) {
       ${szer > 0 ? `<div style="background:${s[0]};border-radius:0 4px 4px 0;height:14px;width:${szer}%"></div>` : ''}</div></td></tr>`;
 }
 
-function budujMail_(w) {
+function budujMail_(w, o) {
   const prog = w.prog;
   const wkrotce = w.wszystkie.filter(a => a.dni > prog && a.dni <= 2 * prog);
   const skala = skalaSlupkow_(prog);
+  const magazyn = strona_(o, '#leki/magazyn');
 
   const sekcja = t => `<h2 style="font-size:17px;margin:22px 0 8px;color:#111">${t}</h2>`;
   const lista = a => `<p style="margin:4px 0;font-size:16px;color:#111"><b>${esc_(a.nazwa)}</b>: ${esc_(opisLeku_(a).slice(a.nazwa.length + 2))}</p>`;
   const slupek = a => slupekHtml_(a, prog);
 
   const html = `<div style="font-family:system-ui,-apple-system,'Segoe UI',Arial,sans-serif;max-width:520px;margin:0 auto;color:#111">
-    ${w.alarmowe.length ? `<div style="background:#d03b3b;color:#fff;border-radius:12px;padding:12px 14px;font-size:20px;font-weight:700">Zamów leki: starczą na ${dniTekst_(prog)} lub mniej</div>${w.alarmowe.map(lista).join('')}`
-      : `<div style="background:#67B437;color:#2B2A29;border-radius:12px;padding:12px 14px;font-size:20px;font-weight:700">Nic nie trzeba teraz zamawiać</div>`}
+    <p style="font-size:15px;color:#4a4f4c;margin:0 0 8px">${o.tytul}</p>
+    ${w.alarmowe.length ? `<div style="background:#d03b3b;color:#fff;border-radius:12px;padding:12px 14px;font-size:20px;font-weight:700">${o.nazwa}: zamów leki, starczą na ${dniTekst_(prog)} lub mniej</div>${w.alarmowe.map(lista).join('')}`
+      : `<div style="background:#67B437;color:#2B2A29;border-radius:12px;padding:12px 14px;font-size:20px;font-weight:700">${o.nazwa}: nic nie trzeba teraz zamawiać</div>`}
     ${wkrotce.length ? sekcja('Mogą się skończyć niedługo') + wkrotce.map(lista).join('') : ''}
     ${sekcja('Na ile dni starczą wszystkie leki')}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">${w.wszystkie.map(slupek).join('')}</table>
     <p style="font-size:13px;color:#4a4f4c;margin:10px 0 0">Zamów: do ${dniTekst_(prog)}. Wkrótce: do ${dniTekst_(2 * prog)}. Pełny słupek: ${dniTekst_(skala)} lub więcej.</p>
     ${w.bezStanu.length ? `<p style="font-size:15px;margin:14px 0 0"><b>Bez wpisanego stanu:</b> ${w.bezStanu.map(esc_).join(', ')}</p>` : ''}
-    <p style="margin:20px 0 0"><a href="${KONFIG.strona}" style="display:inline-block;background:#67B437;color:#2B2A29;font-weight:700;text-decoration:none;border-radius:10px;padding:12px 18px">Otwórz magazyn</a></p>
+    <p style="margin:20px 0 0"><a href="${magazyn}" style="display:inline-block;background:#67B437;color:#2B2A29;font-weight:700;text-decoration:none;border-radius:10px;padding:12px 18px">Otwórz magazyn</a></p>
     <p style="font-size:13px;color:#4a4f4c;margin:10px 0 0">Po zakupie uzupełnij stan w magazynie.</p></div>`;
 
   const body = [
-    w.alarmowe.length ? 'Leki taty, które trzeba zamówić:\n' + w.alarmowe.map(opisLeku_).join('\n') : 'Nic nie trzeba teraz zamawiać.',
+    o.tytul,
+    w.alarmowe.length ? 'Leki do zamówienia:\n' + w.alarmowe.map(opisLeku_).join('\n') : 'Nic nie trzeba teraz zamawiać.',
     wkrotce.length ? 'Mogą się skończyć niedługo:\n' + wkrotce.map(opisLeku_).join('\n') : '',
     'Na ile dni starczą wszystkie leki:\n' + w.wszystkie.map(a => `${a.nazwa}: ${a.dni === 0 ? 'brak' : dniTekst_(a.dni)}`).join('\n'),
     w.bezStanu.length ? 'Bez wpisanego stanu: ' + w.bezStanu.join(', ') : '',
-    'Po zakupie uzupełnij stan w magazynie:\n' + KONFIG.strona
+    'Po zakupie uzupełnij stan w magazynie:\n' + magazyn
   ].filter(Boolean).join('\n\n');
 
   return {
     to: Session.getEffectiveUser().getEmail(),
-    subject: w.alarmowe.length ? 'Zamów leki: ' + w.alarmowe.map(a => a.nazwa).join(', ') : 'Zdrowie Taty: stan leków',
+    subject: w.alarmowe.length ? `${o.nazwa}: zamów leki: ` + w.alarmowe.map(a => a.nazwa).join(', ') : `${o.tytul}: stan leków`,
     body: body,
     htmlBody: html
   };
 }
 
-// ---------- podsumowanie miesiąca: cukier i leki ----------
+// ---------- podsumowanie miesiąca: osobny mail dla każdej osoby ----------
 const MIESIACE_ = ['styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec', 'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'];
 const MIESIACA_ = ['stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca', 'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia'];
 const MIESIACU_ = ['styczniu', 'lutym', 'marcu', 'kwietniu', 'maju', 'czerwcu', 'lipcu', 'sierpniu', 'wrześniu', 'październiku', 'listopadzie', 'grudniu'];
 const liczbaPl_ = x => String(Math.round(x * 100) / 100).replace('.', ',');
 
-// Wyzwalacz uruchamia tę funkcję codziennie wieczorem. Mail idzie tylko w ostatni dzień miesiąca, za cały ten miesiąc.
+// Wyzwalacz uruchamia tę funkcję codziennie wieczorem. Maile idą tylko w ostatni dzień miesiąca, za cały ten miesiąc.
 function raportMiesieczny() {
   const dzis = dzienTekst_(new Date());
   const jutro = dodajDni_(dzis, 1);
   if (jutro.slice(8) !== '01') return;
-  wyslijRaport_(dzis.slice(0, 7) + '-01', jutro, false);
+  const token = zaloguj_();
+  dlaKazdejOsoby_(o => wyslijRaport_(o, dzis.slice(0, 7) + '-01', jutro, false, token));
 }
 
-// Podsumowanie bieżącego miesiąca do dziś, tylko na adres właściciela skryptu. Do podejrzenia, jak wygląda.
+// Podsumowania bieżącego miesiąca do dziś, osobno dla każdej osoby, tylko na adres właściciela skryptu. Do podejrzenia, jak wyglądają.
 function wyslijRaportProbny() {
   const dzis = dzienTekst_(new Date());
-  wyslijRaport_(dzis.slice(0, 7) + '-01', dodajDni_(dzis, 1), true);
+  const token = zaloguj_();
+  dlaKazdejOsoby_(o => wyslijRaport_(o, dzis.slice(0, 7) + '-01', dodajDni_(dzis, 1), true, token));
 }
 
 // od: pierwszy dzień miesiąca, doDnia: dzień po ostatnim dniu raportu (oba rrrr-mm-dd)
-function wyslijRaport_(od, doDnia, probny) {
-  const token = zaloguj_();
-  const cukier = bazaZakres_('cukier', poprzedniMiesiac_(od), doDnia, token); // poprzedni miesiąc do porównania średniej
-  const leki = (bazaGet_('leki', token).documents || []).map(odczytajDokument_);
-  const alarm = odczytajDokument_(bazaGet_('ustawienia/alarm', token, true) || {});
-  const mail = budujRaport_(policzRaport_(od, doDnia, cukier, leki, alarm, probny));
+function wyslijRaport_(o, od, doDnia, probny, token) {
+  const cukier = o.raport.includes('cukier') ? bazaZakres_(o, 'cukier', poprzedniMiesiac_(od), doDnia, token) : []; // poprzedni miesiąc do porównania średniej
+  const cisnienie = o.raport.includes('cisnienie') ? bazaZakres_(o, 'cisnienie', od, doDnia, token) : [];
+  const leki = (bazaGet_(o.sciezka + 'leki', token).documents || []).map(odczytajDokument_);
+  const alarm = odczytajDokument_(bazaGet_(o.sciezka + 'ustawienia/alarm', token, true) || {});
+  const mail = budujRaport_(policzRaport_(od, doDnia, cukier, leki, alarm, probny, cisnienie), o);
   mail.to = probny ? Session.getEffectiveUser().getEmail() : adresaci_(alarm);
   MailApp.sendEmail(mail);
 }
@@ -186,7 +215,7 @@ function poprzedniMiesiac_(od) {
   return p[1] === 1 ? `${p[0] - 1}-12-01` : `${p[0]}-${String(p[1] - 1).padStart(2, '0')}-01`;
 }
 
-function policzRaport_(od, doDnia, cukier, leki, alarm, probny) {
+function policzRaport_(od, doDnia, cukier, leki, alarm, probny, cisnienie) {
   const pomiary = cukier.filter(w => w.kiedy instanceof Date && isFinite(Number(w.wartosc)) && w.wartosc !== null)
     .map(w => ({ kiedy: w.kiedy, dzien: dzienTekst_(w.kiedy), wartosc: Number(w.wartosc) }))
     .sort((a, b) => a.kiedy - b.kiedy);
@@ -195,6 +224,16 @@ function policzRaport_(od, doDnia, cukier, leki, alarm, probny) {
   const srednia = a => (a.length ? a.reduce((s, w) => s + w.wartosc, 0) / a.length : null);
   const v = teraz.map(w => w.wartosc);
   const dni = dniMiedzy_(od, doDnia);
+
+  // ciśnienie: średnia, najniższa i najwyższa wartość każdego z trzech pól
+  const cis = (cisnienie || []).filter(w => w.kiedy instanceof Date && ['gorne', 'dolne', 'puls'].every(k => isFinite(Number(w[k])) && w[k] !== null))
+    .map(w => ({ kiedy: w.kiedy, dzien: dzienTekst_(w.kiedy), gorne: Number(w.gorne), dolne: Number(w.dolne), puls: Number(w.puls) }))
+    .filter(w => w.dzien >= od && w.dzien < doDnia)
+    .sort((a, b) => a.kiedy - b.kiedy);
+  const pole = k => {
+    const x = cis.map(w => w[k]);
+    return { srednia: x.length ? x.reduce((s, y) => s + y, 0) / x.length : null, min: x.length ? Math.min.apply(null, x) : null, max: x.length ? Math.max.apply(null, x) : null };
+  };
 
   // leki: stan rano w dniu doDnia, czyli po ostatniej dawce raportowanego okresu (te same zasady co sprawdzLeki)
   const kolory = koloryLekow_(leki);
@@ -217,6 +256,7 @@ function policzRaport_(od, doDnia, cukier, leki, alarm, probny) {
       wysoko: v.filter(x => x > KONFIG.cukierWysoko).length,
       sredniaWczesniej: srednia(wczesniej)
     },
+    cisnienie: { wpisy: cis, liczba: cis.length, dniZPomiarem: new Set(cis.map(w => w.dzien)).size, gorne: pole('gorne'), dolne: pole('dolne'), puls: pole('puls') },
     leki: lekiR.filter(l => l.znany).sort((a, b) => a.dni - b.dni),
     bezStanu: lekiR.filter(l => !l.znany).map(l => l.nazwa)
   };
@@ -285,6 +325,25 @@ function wykresCukru_(r) {
     .build().getAs('image/png').setName('cukier.png');
 }
 
+// Ciśnienie: trzy linie w kolorach jak na wykresie na stronie (górne, dolne, puls).
+function wykresCisnienia_(r) {
+  const c = r.cisnienie, t = Charts.newDataTable()
+    .addColumn(Charts.ColumnType.DATE, 'Dzień')
+    .addColumn(Charts.ColumnType.NUMBER, 'Górne')
+    .addColumn(Charts.ColumnType.NUMBER, 'Dolne')
+    .addColumn(Charts.ColumnType.NUMBER, 'Puls');
+  c.wpisy.forEach(w => t.addRow([w.kiedy, w.gorne, w.dolne, w.puls]));
+  return Charts.newLineChart()
+    .setDataTable(t.build())
+    .setDimensions(680, 320)
+    .setColors(['#2a78d6', '#eb6834', '#1baf7a'])
+    .setLegendPosition(Charts.Position.BOTTOM)
+    .setPointStyle(Charts.PointStyle.MEDIUM)
+    .setOption('hAxis', { format: 'd.MM' })
+    .setOption('chartArea', { left: 50, top: 20, width: '88%', height: '70%' })
+    .build().getAs('image/png').setName('cisnienie.png');
+}
+
 // Zapasowy wykres z tabeli HTML (średnia dzienna), gdyby obrazek się nie wygenerował.
 function wykresCukruHtml_(r) {
   const kolor = x => (x < KONFIG.cukierNisko ? '#d03b3b' : x > KONFIG.cukierWysoko ? '#fab219' : '#67B437');
@@ -301,8 +360,8 @@ function wykresCukruHtml_(r) {
     <p style="font-size:13px;color:#4a4f4c;margin:6px 0 0">Średnia z każdego dnia. Zielony: ${KONFIG.cukierNisko}–${KONFIG.cukierWysoko}, żółty: powyżej ${KONFIG.cukierWysoko}, czerwony: poniżej ${KONFIG.cukierNisko} mg/dL.</p>`;
 }
 
-function budujRaport_(r) {
-  const c = r.cukier, m = r.miesiac;
+function budujRaport_(r, o) {
+  const c = r.cukier, cs = r.cisnienie, m = r.miesiac;
   const ostatni = Number(dodajDni_(r.doDnia, -1).slice(8));
   const okres = r.probny ? `1–${ostatni} ${MIESIACA_[m]} ${r.rok} (próbny, do dziś)` : `${MIESIACE_[m]} ${r.rok}`;
   const poprz = MIESIACU_[(m + 11) % 12];
@@ -310,61 +369,86 @@ function budujRaport_(r) {
   const sekcja = t => `<h2 style="font-size:19px;margin:26px 0 10px;color:#111">${t}</h2>`;
   const kafel = (t, w) => `<td width="25%" style="padding:3px"><div style="background:#eef1ef;border-radius:10px;padding:10px 6px;text-align:center">
     <div style="font-size:13px;color:#4a4f4c">${t}</div><div style="font-size:20px;font-weight:700;color:#111;white-space:nowrap">${w}</div></div></td>`;
+  const obrazek = (cid, alt) => `<img src="cid:${cid}" alt="${alt}" width="520" style="width:100%;max-width:520px;height:auto;display:block;border:0">`;
+  const inlineImages = {};
+  const sprobuj = (nazwa, fn) => { try { inlineImages[nazwa] = fn(r); return true; } catch (e) { console.warn('Wykres ' + nazwa + ' jako obrazek się nie udał: ' + e); return false; } };
 
-  let porownanie = '';
-  if (c.liczba && c.sredniaWczesniej !== null) {
-    const roznica = Math.round(c.srednia - c.sredniaWczesniej);
-    porownanie = roznica === 0 ? `Średnia taka sama jak w ${poprz}.`
-      : `Średnia ${roznica > 0 ? 'wyższa' : 'niższa'} o ${Math.abs(roznica)} mg/dL niż w ${poprz} (${mg(c.sredniaWczesniej)}).`;
+  // ---- ciśnienie ----
+  let cisnienieHtml = '', cisnienieTekst = '';
+  if (o.raport.includes('cisnienie')) {
+    const zakres = p => `${Math.round(p.min)}–${Math.round(p.max)}`;
+    cisnienieHtml = !cs.liczba ? '<p style="font-size:16px">Brak pomiarów ciśnienia w tym okresie.</p>' : `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
+        ${kafel('Górne', Math.round(cs.gorne.srednia))}${kafel('Dolne', Math.round(cs.dolne.srednia))}${kafel('Puls', Math.round(cs.puls.srednia))}${kafel('Pomiarów', cs.liczba)}
+      </tr></table>
+      <p style="font-size:13px;color:#4a4f4c;margin:6px 0 12px">Średnie: ciśnienie w mmHg, puls na minutę. Pomiary w ${cs.dniZPomiarem} z ${r.dni} dni.</p>
+      ${sprobuj('cisnienie', wykresCisnienia_) ? obrazek('cisnienie', 'Wykres ciśnienia') : ''}
+      <p style="font-size:15px;margin:12px 0 0">Od najniższego do najwyższego: górne <b>${zakres(cs.gorne)}</b> · dolne <b>${zakres(cs.dolne)}</b> · puls <b>${zakres(cs.puls)}</b></p>`;
+    cisnienieTekst = cs.liczba
+      ? `Ciśnienie: średnio ${Math.round(cs.gorne.srednia)}/${Math.round(cs.dolne.srednia)} mmHg, puls ${Math.round(cs.puls.srednia)}, pomiarów ${cs.liczba} (w ${cs.dniZPomiarem} z ${r.dni} dni).\n`
+        + `Górne ${zakres(cs.gorne)}, dolne ${zakres(cs.dolne)}, puls ${zakres(cs.puls)}.`
+      : 'Ciśnienie: brak pomiarów.';
   }
 
-  let wykres = null, inlineImages;
-  if (c.liczba) {
-    try { wykres = wykresCukru_(r); inlineImages = { cukier: wykres }; } catch (e) { console.warn('Wykres cukru jako obrazek się nie udał: ' + e); }
+  // ---- cukier ----
+  let cukierHtml = '', cukierTekst = '';
+  if (o.raport.includes('cukier')) {
+    let porownanie = '';
+    if (c.liczba && c.sredniaWczesniej !== null) {
+      const roznica = Math.round(c.srednia - c.sredniaWczesniej);
+      porownanie = roznica === 0 ? `Średnia taka sama jak w ${poprz}.`
+        : `Średnia ${roznica > 0 ? 'wyższa' : 'niższa'} o ${Math.abs(roznica)} mg/dL niż w ${poprz} (${mg(c.sredniaWczesniej)}).`;
+    }
+    cukierHtml = !c.liczba ? '<p style="font-size:16px">Brak pomiarów cukru w tym okresie.</p>' : `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
+        ${kafel('Średnio', Math.round(c.srednia))}${kafel('Najniżej', Math.round(c.min))}${kafel('Najwyżej', Math.round(c.max))}${kafel('Pomiarów', c.liczba)}
+      </tr></table>
+      <p style="font-size:13px;color:#4a4f4c;margin:6px 0 12px">Wartości w mg/dL. Pomiary w ${c.dniZPomiarem} z ${r.dni} dni.</p>
+      ${sprobuj('cukier', wykresCukru_) ? obrazek('cukier', 'Wykres cukru') : wykresCukruHtml_(r)}
+      <p style="font-size:15px;margin:12px 0 0">Poniżej ${KONFIG.cukierNisko}: <b>${c.nisko}</b> · ${KONFIG.cukierNisko}–${KONFIG.cukierWysoko}: <b>${c.liczba - c.nisko - c.wysoko}</b> · powyżej ${KONFIG.cukierWysoko}: <b>${c.wysoko}</b></p>
+      ${porownanie ? `<p style="font-size:15px;margin:6px 0 0">${porownanie}</p>` : ''}`;
+    cukierTekst = c.liczba ? `Cukier: średnio ${mg(c.srednia)}, najniżej ${mg(c.min)}, najwyżej ${mg(c.max)}, pomiarów ${c.liczba} (w ${c.dniZPomiarem} z ${r.dni} dni).\n`
+      + `Poniżej ${KONFIG.cukierNisko}: ${c.nisko}, powyżej ${KONFIG.cukierWysoko}: ${c.wysoko}.` + (porownanie ? '\n' + porownanie : '')
+      : 'Cukier: brak pomiarów.';
   }
 
-  const cukierHtml = !c.liczba ? '<p style="font-size:16px">Brak pomiarów cukru w tym okresie.</p>' : `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
-      ${kafel('Średnio', Math.round(c.srednia))}${kafel('Najniżej', Math.round(c.min))}${kafel('Najwyżej', Math.round(c.max))}${kafel('Pomiarów', c.liczba)}
-    </tr></table>
-    <p style="font-size:13px;color:#4a4f4c;margin:6px 0 12px">Wartości w mg/dL. Pomiary w ${c.dniZPomiarem} z ${r.dni} dni.</p>
-    ${wykres ? '<img src="cid:cukier" alt="Wykres cukru" width="520" style="width:100%;max-width:520px;height:auto;display:block;border:0">' : wykresCukruHtml_(r)}
-    <p style="font-size:15px;margin:12px 0 0">Poniżej ${KONFIG.cukierNisko}: <b>${c.nisko}</b> · ${KONFIG.cukierNisko}–${KONFIG.cukierWysoko}: <b>${c.liczba - c.nisko - c.wysoko}</b> · powyżej ${KONFIG.cukierWysoko}: <b>${c.wysoko}</b></p>
-    ${porownanie ? `<p style="font-size:15px;margin:6px 0 0">${porownanie}</p>` : ''}`;
-
+  // ---- leki ----
   const lekiHtml = (r.leki.length
     ? `<p style="font-size:14px;color:#4a4f4c;margin:-4px 0 6px">${r.probny ? 'Stan na jutro rano' : 'Stan na 1 ' + MIESIACA_[(m + 1) % 12]}</p>
        ${wykresLekowHtml_(r.leki, r.prog)}`
     : '<p style="font-size:16px">Brak leków z wpisanym stanem.</p>')
     + (r.bezStanu.length ? `<p style="font-size:15px;margin:12px 0 0"><b>Bez wpisanego stanu:</b> ${r.bezStanu.map(esc_).join(', ')}</p>` : '');
+  const lekiTekst = r.leki.length ? 'Leki (na ile dni starczą):\n' + r.leki.map(l => `${l.nazwa}: ${dniTekst2_(l.dni)}`).join('\n') : 'Leki: brak leków z wpisanym stanem.';
 
+  const czesci = {
+    cisnienie: [sekcja('Ciśnienie') + cisnienieHtml, cisnienieTekst],
+    cukier: [sekcja('Cukier') + cukierHtml, cukierTekst],
+    leki: [sekcja('Na ile dni starczą leki') + lekiHtml, lekiTekst]
+  };
   const html = `<div style="font-family:system-ui,-apple-system,'Segoe UI',Arial,sans-serif;max-width:520px;margin:0 auto;color:#111">
-    <div style="background:#67B437;color:#2B2A29;border-radius:12px;padding:12px 14px"><div style="font-size:14px">Zdrowie Taty · podsumowanie</div>
+    <div style="background:${o.kolor};color:#2B2A29;border-radius:12px;padding:12px 14px"><div style="font-size:14px">${o.tytul} · podsumowanie</div>
       <div style="font-size:22px;font-weight:700">${okres}</div></div>
-    ${sekcja('Cukier')}${cukierHtml}
-    ${sekcja('Na ile dni starczą leki')}${lekiHtml}
-    <p style="margin:22px 0 0"><a href="${KONFIG.strona.split('#')[0]}" style="display:inline-block;background:#67B437;color:#2B2A29;font-weight:700;text-decoration:none;border-radius:10px;padding:12px 18px">Otwórz Zdrowie Taty</a></p></div>`;
+    ${o.raport.map(k => czesci[k][0]).join('')}
+    <p style="margin:22px 0 0"><a href="${strona_(o)}" style="display:inline-block;background:${o.kolor};color:#2B2A29;font-weight:700;text-decoration:none;border-radius:10px;padding:12px 18px">Otwórz ${o.tytul}</a></p></div>`;
 
   const body = [
-    'Zdrowie Taty, podsumowanie: ' + okres,
-    c.liczba ? `Cukier: średnio ${mg(c.srednia)}, najniżej ${mg(c.min)}, najwyżej ${mg(c.max)}, pomiarów ${c.liczba} (w ${c.dniZPomiarem} z ${r.dni} dni).\n`
-      + `Poniżej ${KONFIG.cukierNisko}: ${c.nisko}, powyżej ${KONFIG.cukierWysoko}: ${c.wysoko}.` + (porownanie ? '\n' + porownanie : '')
-      : 'Cukier: brak pomiarów.',
-    'Leki (na ile dni starczą):\n' + r.leki.map(l => `${l.nazwa}: ${dniTekst2_(l.dni)}`).join('\n'),
+    o.tytul + ', podsumowanie: ' + okres,
+    ...o.raport.map(k => czesci[k][1]),
     r.bezStanu.length ? 'Bez wpisanego stanu: ' + r.bezStanu.join(', ') : '',
-    KONFIG.strona.split('#')[0]
+    strona_(o)
   ].filter(Boolean).join('\n\n');
 
-  const mail = { subject: 'Zdrowie Taty: podsumowanie, ' + okres, body: body, htmlBody: html };
-  if (inlineImages) mail.inlineImages = inlineImages;
+  const mail = { subject: o.tytul + ': podsumowanie, ' + okres, body: body, htmlBody: html };
+  if (Object.keys(inlineImages).length) mail.inlineImages = inlineImages;
   return mail;
 }
 
-// Wpisy kolekcji z polem kiedy w przedziale [od, doDnia), dni liczone w strefie Polski.
-function bazaZakres_(kolekcja, od, doDnia, token) {
+// Wpisy kolekcji osoby z polem kiedy w przedziale [od, doDnia), dni liczone w strefie Polski.
+function bazaZakres_(o, kolekcja, od, doDnia, token) {
   const ts = t => ({ timestampValue: Utilities.parseDate(t, KONFIG.strefa, 'yyyy-MM-dd').toISOString() });
   const filtr = (op, t) => ({ fieldFilter: { field: { fieldPath: 'kiedy' }, op: op, value: ts(t) } });
-  const r = UrlFetchApp.fetch(`https://firestore.googleapis.com/v1/projects/${KONFIG.projekt}/databases/(default)/documents:runQuery`, {
+  const rodzic = o.sciezka ? '/' + o.sciezka.replace(/\/$/, '') : ''; // zapytanie tylko w kolekcjach tej osoby
+  const r = UrlFetchApp.fetch(`https://firestore.googleapis.com/v1/projects/${KONFIG.projekt}/databases/(default)/documents${rodzic}:runQuery`, {
     method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true,
     payload: JSON.stringify({ structuredQuery: {
       from: [{ collectionId: kolekcja }],
@@ -395,17 +479,17 @@ function adresBazy_(sciezka) {
   return `https://firestore.googleapis.com/v1/projects/${KONFIG.projekt}/databases/(default)/documents/${sciezka}`;
 }
 function bazaGet_(sciezka, token, mozeNieByc) {
-  const r = UrlFetchApp.fetch(adresBazy_(sciezka) + (sciezka === 'leki' ? '?pageSize=300' : ''), {
+  const r = UrlFetchApp.fetch(adresBazy_(sciezka) + (/(^|\/)leki$/.test(sciezka) ? '?pageSize=300' : ''), {
     headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true
   });
   if (mozeNieByc && r.getResponseCode() === 404) return null;
   if (r.getResponseCode() !== 200) throw new Error('Baza: ' + r.getContentText());
   return JSON.parse(r.getContentText());
 }
-function bazaZapiszAlarm_(wyslano, token) {
+function bazaZapiszAlarm_(o, wyslano, token) {
   const pola = {};
   Object.keys(wyslano).forEach(id => { pola[id] = { stringValue: wyslano[id] }; });
-  const r = UrlFetchApp.fetch(adresBazy_('ustawienia/alarm') + '?updateMask.fieldPaths=sprawdzono&updateMask.fieldPaths=wyslano', {
+  const r = UrlFetchApp.fetch(adresBazy_(o.sciezka + 'ustawienia/alarm') + '?updateMask.fieldPaths=sprawdzono&updateMask.fieldPaths=wyslano', {
     method: 'patch', contentType: 'application/json', headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true,
     payload: JSON.stringify({ fields: { sprawdzono: { timestampValue: new Date().toISOString() }, wyslano: { mapValue: { fields: pola } } } })
   });

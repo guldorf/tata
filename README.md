@@ -3,6 +3,13 @@
 Strona na telefon: codzienne pomiary cukru i ciśnienia, wykaz leków, magazyn tabletek i alarm o zamówieniu.
 Jeden plik `index.html` + Firebase (Firestore i logowanie) + GitHub Pages, jak w Butli.
 
+## Dwie osoby
+
+`index.html` to strona taty, a `index.html?osoba=maria` to strona Marii: ta sama aplikacja, różowe tło, kafle w kolejności ciśnienie, leki, cukier.
+Przycisk w prawym górnym rogu ekranu startowego przełącza osoby. Dane taty leżą w kolekcjach głównych (jak od początku),
+dane Marii w `osoby/maria/...` (te same nazwy kolekcji i pól). Wybór robi `K()` w `index.html` i `OSOBY` w `alarm-mail.gs`.
+Każda osoba ma własny próg, drugi adres e-mail i osobne maile (alarm i podsumowanie miesiąca).
+
 ## Dane w Firestore
 
 | Kolekcja | Pola |
@@ -31,7 +38,8 @@ Mail idzie na konto właściciela skryptu i na drugi adres wpisany w Magazynie.
 
 ### Podsumowanie miesiąca
 
-`raportMiesieczny` uruchamia się codziennie około 21:00 (`godzinaRaportu`), ale mail wysyła tylko w ostatni dzień miesiąca, za cały ten miesiąc.
+`raportMiesieczny` uruchamia się codziennie około 21:00 (`godzinaRaportu`), ale maile wysyła tylko w ostatni dzień miesiąca, za cały ten miesiąc: osobny mail dla taty (cukier, leki) i dla Marii (ciśnienie, cukier, leki); sekcje ustawia `raport` w `OSOBY`.
+Ciśnienie: średnie górnego, dolnego i pulsu, zakres od najniższego do najwyższego, wykres trzech linii (obrazek z Charts; gdy się nie uda, zostają same liczby).
 Cukier: średnia, najniższy i najwyższy odczyt, liczba pomiarów, wykres liniowy wszystkich odczytów z granicami 70 i 180 mg/dL (`cukierNisko`, `cukierWysoko`), porównanie średniej z poprzednim miesiącem.
 Wykres to obrazek z usługi Charts w Apps Script; gdyby się nie wygenerował, mail pokazuje słupki średnich dziennych zrobione z tabeli HTML.
 Leki: ten sam wykres co w Magazynie na stronie („Na ile dni starczą leki": kolory leków, linia progu, skala do 60 dni), stan na 1. dzień następnego miesiąca.
