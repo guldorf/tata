@@ -23,6 +23,9 @@ Dostęp ma tylko konto `guldorf@tata.app` (`firestore.rules`). Hasła nie ma w k
 
 ## Jak liczone są leki
 
+Leki mają dawki w 5 porach dnia (`dawki`) albo, np. paski do glukometru, liczbę sztuk w każdym dniu tygodnia od poniedziałku (`tydzien`, 7 liczb).
+W tym drugim trybie `naDzien` to średnia (suma / 7), a stan pokazuje się w całych sztukach. Wybór trybu jest w oknie leku.
+
 `stan` to liczba tabletek w dniu `stanData`, rano, przed dzisiejszą dawką. Każdy kolejny dzień odejmuje `naDzien`.
 Zmiana dawki najpierw przelicza stan po starej dawce, a nowa obowiązuje od dziś.
 Alarm włącza się, gdy leku zostaje na `prog` dni lub mniej.

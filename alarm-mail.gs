@@ -102,8 +102,8 @@ function wybierzLeki_(leki, alarm, teraz) {
     if (l.stan === null || l.stan === undefined || !l.stanData) { bezStanu.push(l.nazwa); return; }
     const minelo = Math.max(0, dniMiedzy_(dzienTekst_(l.stanData), dzis));
     const zostalo = Math.max(0, l.stan - l.naDzien * minelo);
-    const dni = Math.floor(zostalo / l.naDzien);
-    const lek = { nazwa: l.nazwa, zostalo: zostalo, dni: dni, koniec: dodajDni_(dzis, dni - 1) };
+    const dni = Math.floor(zostalo / l.naDzien + 1e-9); // 1e-9: np. 9 szt. przy 9/7 dziennie to równo 7 dni, nie 6
+    const lek = { nazwa: l.nazwa, zostalo: zostalo, dni: dni, koniec: dodajDni_(dzis, dni - 1), sztuki: Array.isArray(l.tydzien) };
     wszystkie.push(lek);
     if (dni > prog) return;
     alarmowe.push(lek);
@@ -121,7 +121,9 @@ function wybierzLeki_(leki, alarm, teraz) {
 const dniTekst_ = n => (n === 1 ? '1 dzień' : n + ' dni');
 const opisLeku_ = a => {
   const kiedy = a.dni === 0 ? 'już brak' : `zostało na ${dniTekst_(a.dni)}, do ${dataPl_(a.koniec)}`;
-  return `${a.nazwa}: ${kiedy}` + (a.zostalo > 0 ? ` (ok. ${String(Math.round(a.zostalo * 100) / 100).replace('.', ',')} tabl.)` : '');
+  // pozycje liczone w dniach tygodnia (np. paski do glukometru) to całe sztuki, leki to tabletki
+  const ile = a.sztuki ? Math.round(a.zostalo) + ' szt.' : String(Math.round(a.zostalo * 100) / 100).replace('.', ',') + ' tabl.';
+  return `${a.nazwa}: ${kiedy}` + (a.zostalo > 0 ? ` (ok. ${ile})` : '');
 };
 const esc_ = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -241,7 +243,7 @@ function policzRaport_(od, doDnia, cukier, leki, alarm, probny, cisnienie) {
     const lek = { nazwa: l.nazwa, kolor: kolory[l.id], naDzien: l.naDzien, znany: !(l.stan === null || l.stan === undefined || !l.stanData) };
     if (lek.znany) {
       lek.zostalo = Math.max(0, l.stan - l.naDzien * Math.max(0, dniMiedzy_(dzienTekst_(l.stanData), doDnia)));
-      lek.dni = Math.floor(lek.zostalo / l.naDzien);
+      lek.dni = Math.floor(lek.zostalo / l.naDzien + 1e-9);
     }
     return lek;
   });
@@ -502,6 +504,7 @@ function odczytajWartosc_(v) {
   if ('nullValue' in v) return null;
   if ('timestampValue' in v) return new Date(v.timestampValue);
   if ('mapValue' in v) return odczytajPola_(v.mapValue.fields || {});
+  if ('arrayValue' in v) return (v.arrayValue.values || []).map(odczytajWartosc_);
   return null;
 }
 function odczytajPola_(pola) {

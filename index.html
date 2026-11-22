@@ -127,6 +127,11 @@ tbody tr{cursor:pointer}
 .dawka input:focus{outline:2px solid var(--akcent);outline-offset:-2px}
 .dawka .wart{display:flex;align-items:center;justify-content:center;height:40px;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
 .lek .dawki{margin:8px 0 6px}
+.dawki.t7{grid-template-columns:repeat(7,minmax(0,1fr))}
+.t7 .pora{min-height:34px;font-size:15px}
+.dawka.weekend,.dawka.weekend input{background:#fff1f1}
+.dawka.weekend .pora{background:#f9d2d2;color:#9b1c1c}
+#edTryb{margin-bottom:10px}
 .razem{font-size:17px;margin:8px 0 0}
 .slupki{position:relative;--im:104px;--wa:58px;padding-top:24px}
 button.slupek{display:grid;grid-template-columns:var(--im) minmax(0,1fr) var(--wa);gap:0 8px;align-items:center;width:100%;min-height:46px;padding:2px 0;border-radius:0;background:none;color:var(--tekst);font-size:15px;font-weight:400;line-height:1.15;text-align:left}
@@ -452,7 +457,7 @@ function stanLeku(l,dzis=new Date()){
   if(l.stan===null||l.stan===undefined||!l.stanData) return {znany:false};
   const teraz=Math.max(0,l.stan-(l.naDzien||0)*Math.max(0,dniMiedzy(l.stanData.toDate(),dzis)));
   if(!(l.naDzien>0)) return {znany:true,teraz,dni:Infinity};
-  const dni=Math.floor(teraz/l.naDzien), koniec=new Date(dzis.getFullYear(),dzis.getMonth(),dzis.getDate()+dni-1);
+  const dni=Math.floor(teraz/l.naDzien+1e-9), koniec=new Date(dzis.getFullYear(),dzis.getMonth(),dzis.getDate()+dni-1);
   return {znany:true,teraz,dni,koniec};
 }
 const prog=()=>D.alarm.prog>0?D.alarm.prog:PROG_DOMYSLNY;
@@ -508,14 +513,15 @@ function rysujLeki(){
   document.querySelectorAll('#przLeki button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.z===UI.zakladka));
   $('wykaz').hidden=UI.zakladka!=='wykaz'; $('magazyn').hidden=UI.zakladka!=='magazyn';
   const abc=D.leki.slice().sort((a,b)=>a.nazwa.localeCompare(b.nazwa,'pl'));
-  $('listaWykaz').innerHTML=abc.length?abc.map(l=>`<button class="lek" data-id="${esc(l.id)}"><b>${esc(l.nazwa)}</b>${htmlDawek(l)}<span class="ile">Razem ${liczba(l.naDzien)} tabl. dziennie</span></button>`).join('')
+  $('listaWykaz').innerHTML=abc.length?abc.map(l=>`<button class="lek" data-id="${esc(l.id)}"><b>${esc(l.nazwa)}</b>${htmlDawek(l)}<span class="ile">${tygodniowy(l)
+      ?`Razem ${liczba(l.tydzien.reduce((a,b)=>a+b,0))} szt. w tygodniu`:`Razem ${liczba(l.naDzien)} tabl. dziennie`}</span></button>`).join('')
     :'<p class="pusto">Dodaj pierwszy lek.</p>';
   const wg=abc.map(l=>({l,s:stanLeku(l)})).sort((a,b)=>(a.s.znany?a.s.dni:-1)-(b.s.znany?b.s.dni:-1));
   $('listaMagazyn').innerHTML=wg.length?wg.map(({l,s})=>{
-    if(!s.znany) return `<button class="lek" data-id="${esc(l.id)}"><b>${esc(l.nazwa)}</b><span class="nisko">Wpisz, ile masz tabletek</span></button>`;
+    if(!s.znany) return `<button class="lek" data-id="${esc(l.id)}"><b>${esc(l.nazwa)}</b><span class="nisko">Wpisz, ile masz ${tygodniowy(l)?'sztuk':'tabletek'}</span></button>`;
     const alarm=s.dni<=prog();
     const reszta=s.dni===Infinity?'Nie ubywa (0 dziennie)':s.dni===0?'Lek się skończył':`Starczy na ${s.dni===1?'1 dzień':s.dni+' dni'}, do ${dzienData(s.koniec)}`;
-    return `<button class="lek" data-id="${esc(l.id)}"><b>${esc(l.nazwa)}</b><span class="ile">Zostało ok. ${liczba(s.teraz)} tabl.</span><br><span class="${alarm?'nisko':''}">${reszta}</span>${alarm?'<br><span class="zamow">Zamów</span>':''}</button>`;
+    return `<button class="lek" data-id="${esc(l.id)}"><b>${esc(l.nazwa)}</b><span class="ile">Zostało ok. ${ilosc(l,s.teraz)}</span><br><span class="${alarm?'nisko':''}">${reszta}</span>${alarm?'<br><span class="zamow">Zamów</span>':''}</button>`;
   }).join(''):'<p class="pusto">Najpierw dodaj leki w wykazie.</p>';
   rysujWykresLekow();
   if(document.activeElement!==$('prog')) $('prog').value=prog();
@@ -526,29 +532,37 @@ function rysujLeki(){
     :`Maile działają. Ostatnie sprawdzenie: ${kiedyTekst(spr)}.`+(D.alarm.drugiMail?` Kopia idzie też na ${D.alarm.drugiMail}.`:'');
 }
 
-// prostokąt z porami dnia: same wartości na liście, pola do wpisania w oknie
-function htmlDawek(lek,edycja){
-  const d=(lek&&lek.dawki)||[];
-  return `<span class="dawki" style="display:grid">${PORY.map((p,i)=>{
+// Pozycja liczona w dniach tygodnia (np. paski do glukometru): tydzien = 7 liczb od poniedziałku, naDzien = suma / 7.
+const DNI = ['Pn','Wt','Śr','Cz','Pt','So','Nd'];
+const tygodniowy = l => !!(l && Array.isArray(l.tydzien));
+const ilosc = (l,n) => tygodniowy(l) ? Math.round(n)+' szt.' : liczba(n)+' tabl.';
+
+// ramka z porami dnia albo z dniami tygodnia (sobota i niedziela wyróżnione): same wartości na liście, pola do wpisania w oknie
+function htmlDawek(lek,edycja,tydzien){
+  const t=tydzien===undefined?tygodniowy(lek):tydzien, etykiety=t?DNI:PORY, p=t?'edDzien':'edDawka';
+  const d=(lek&&(t?lek.tydzien:lek.dawki))||[];
+  return `<span class="dawki${t?' t7':''}" style="display:grid">${etykiety.map((e,i)=>{
     const v=d[i]>0?liczba(d[i]):'';
-    return `<span class="dawka">${edycja
-      ?`<label class="pora" for="edDawka${i}">${p}</label><input id="edDawka${i}" inputmode="decimal" autocomplete="off" value="${v}" aria-label="${p.replace('­','')}">`
-      :`<span class="pora">${p}</span><span class="wart">${v||'–'}</span>`}</span>`;
+    return `<span class="dawka${t&&i>=5?' weekend':''}">${edycja
+      ?`<label class="pora" for="${p}${i}">${e}</label><input id="${p}${i}" inputmode="decimal" autocomplete="off" value="${v}" aria-label="${e.replace('­','')}">`
+      :`<span class="pora">${e}</span><span class="wart">${v||'–'}</span>`}</span>`;
   }).join('')}</span>`;
 }
-// zwraca tablicę 5 dawek, null gdy wszystkie puste, albo tekst błędu
-function czytajDawki(){
-  const t=PORY.map((p,i)=>$('edDawka'+i).value.trim());
+// zwraca tablicę dawek (5 pór albo 7 dni), null gdy wszystkie puste, albo tekst błędu
+function czytajDawki(tydzien){
+  const t=(tydzien?DNI:PORY).map((e,i)=>$((tydzien?'edDzien':'edDawka')+i).value.trim());
   if(t.every(s=>!s)) return null;
   const d=t.map(s=>s?num(s):0);
-  return d.some(v=>v===null||v<0||v>20)?'Dawka to liczba, np. 1 albo 0,5.':d;
+  return d.some(v=>v===null||v<0||v>20)?'Wpisz liczbę, np. 1 albo 0,5.':d;
 }
 
 function oknoLeku(lek){
-  const stara=lek&&!lek.dawki;
+  const stara=lek&&!lek.dawki&&!lek.tydzien;
+  let tydzien=tygodniowy(lek);
   otworzOkno(`<h2>${lek?'Popraw lek':'Nowy lek'}</h2>
     <div class="pole"><label for="edNazwa">Nazwa leku</label><input id="edNazwa" value="${lek?esc(lek.nazwa):''}" autocomplete="off"></div>
-    <div class="pole"><label>Dawki (ile tabletek o danej porze)</label>${htmlDawek(lek,true)}
+    <div class="pole"><div class="prz male" id="edTryb"><button type="button" data-t="0">Pory dnia</button><button type="button" data-t="1">Dni tygodnia</button></div>
+      <label id="edOpis"></label><div id="edPory">${htmlDawek(lek,true,false)}</div><div id="edTydzien">${htmlDawek(lek,true,true)}</div>
       <p class="razem" id="edRazem"></p></div>
     <p class="blad" role="alert"></p>
     <div class="przyciski"><button data-a="ok">Zapisz</button>${lek?'<button class="usun" data-a="usun">Usuń lek</button>':''}<button class="drugi" data-a="anuluj">Anuluj</button></div>`,a=>{
@@ -557,40 +571,46 @@ function oknoLeku(lek){
       if(!confirm(`Usunąć ${lek.nazwa} z wykazu i magazynu?`)) return;
       K('leki').doc(lek.id).delete().catch(nieUdalo); zamknijOkno(); toast('Usunięto'); return;
     }
-    const nazwa=$('edNazwa').value.trim(), dawki=czytajDawki(), blad=oknoForm.querySelector('.blad');
+    const nazwa=$('edNazwa').value.trim(), dawki=czytajDawki(tydzien), blad=oknoForm.querySelector('.blad');
     if(!nazwa){ blad.textContent='Wpisz nazwę leku.'; return; }
     if(typeof dawki==='string'){ blad.textContent=dawki; return; }
-    if(!dawki&&!stara){ blad.textContent='Wpisz dawkę przynajmniej przy jednej porze.'; return; }
+    if(!dawki&&!stara){ blad.textContent=tydzien?'Wpisz ilość przynajmniej przy jednym dniu.':'Wpisz dawkę przynajmniej przy jednej porze.'; return; }
+    const suma=dawki&&dawki.reduce((a,b)=>a+b,0);
+    const sposob=dawki&&{dawki:tydzien?null:dawki, tydzien:tydzien?dawki:null, naDzien:tydzien?suma/7:suma};
     if(lek){
-      const dane={nazwa}, s=stanLeku(lek);
-      if(dawki){
-        dane.dawki=dawki; dane.naDzien=dawki.reduce((a,b)=>a+b,0);
-        // zmiana dawki: to, co już zużyto starą dawką, zostaje odjęte, nowa liczy się od dziś
-        if(s.znany&&dane.naDzien!==lek.naDzien){ dane.stan=s.teraz; dane.stanData=TS(new Date()); }
-      }
+      const dane=Object.assign({nazwa},sposob), s=stanLeku(lek);
+      // zmiana dawki: to, co już zużyto starą dawką, zostaje odjęte, nowa liczy się od dziś
+      if(sposob&&s.znany&&dane.naDzien!==lek.naDzien){ dane.stan=s.teraz; dane.stanData=TS(new Date()); }
       K('leki').doc(lek.id).update(dane).catch(nieUdalo);
-    } else K('leki').add({nazwa,dawki,naDzien:dawki.reduce((a,b)=>a+b,0),stan:null,stanData:null}).catch(nieUdalo);
+    } else K('leki').add(Object.assign({nazwa,stan:null,stanData:null},sposob)).catch(nieUdalo);
     zamknijOkno(); toast('Zapisano');
   });
   // lek sprzed podziału na pory zachowuje swoją dawkę dzienną, dopóki nie zostanie rozpisana
   const razem=()=>{
-    const d=czytajDawki();
-    $('edRazem').textContent=Array.isArray(d)?`Razem ${liczba(d.reduce((a,b)=>a+b,0))} tabl. dziennie`
-      :stara&&!d?`Teraz ${liczba(lek.naDzien)} tabl. dziennie. Rozpisz je na pory.`:'';
+    const d=czytajDawki(tydzien), s=Array.isArray(d)&&d.reduce((a,b)=>a+b,0);
+    $('edRazem').textContent=Array.isArray(d)?(tydzien?`Razem ${liczba(s)} szt. w tygodniu (średnio ${liczba(s/7)} dziennie)`:`Razem ${liczba(s)} tabl. dziennie`)
+      :stara&&!d?`Teraz ${liczba(lek.naDzien)} tabl. dziennie. Rozpisz je na pory albo dni tygodnia.`:'';
   };
-  oknoForm.oninput=razem; razem();
+  const pokazTryb=()=>{
+    $('edPory').hidden=tydzien; $('edTydzien').hidden=!tydzien;
+    $('edTryb').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',(b.dataset.t==='1')===tydzien));
+    $('edOpis').textContent=tydzien?'Ile sztuk w dany dzień tygodnia':'Dawki (ile tabletek o danej porze)';
+    razem();
+  };
+  $('edTryb').onclick=e=>{ const b=e.target.closest('[data-t]'); if(b){ tydzien=b.dataset.t==='1'; pokazTryb(); } };
+  oknoForm.oninput=razem; pokazTryb();
 }
 
 function oknoStanu(lek){
   const s=stanLeku(lek);
   otworzOkno(`<h2>${esc(lek.nazwa)}</h2>
-    <p>${s.znany?`Według wyliczenia zostało ok. ${liczba(s.teraz)} tabl.`:'Stan nie był jeszcze wpisany.'}</p>
-    <div class="pole"><label for="edStan">Ile tabletek</label><input id="edStan" inputmode="decimal" autocomplete="off"></div>
+    <p>${s.znany?`Według wyliczenia zostało ok. ${ilosc(lek,s.teraz)}`:'Stan nie był jeszcze wpisany.'}</p>
+    <div class="pole"><label for="edStan">Ile ${tygodniowy(lek)?'sztuk':'tabletek'}</label><input id="edStan" inputmode="decimal" autocomplete="off"></div>
     <p class="blad" role="alert"></p>
     <div class="przyciski"><button data-a="ok">Tyle mam teraz</button>${s.znany?'<button class="drugi" data-a="dodaj">Dokupiono – dodaj do stanu</button>':''}<button class="drugi" data-a="anuluj">Anuluj</button></div>`,a=>{
     if(a==='anuluj') return zamknijOkno();
     const n=num($('edStan').value);
-    if(n===null||n<0){ oknoForm.querySelector('.blad').textContent='Wpisz liczbę tabletek.'; return; }
+    if(n===null||n<0){ oknoForm.querySelector('.blad').textContent=tygodniowy(lek)?'Wpisz liczbę sztuk.':'Wpisz liczbę tabletek.'; return; }
     K('leki').doc(lek.id).update({stan:a==='dodaj'?s.teraz+n:n,stanData:TS(new Date())}).catch(nieUdalo);
     zamknijOkno(); toast('Zapisano');
   });
